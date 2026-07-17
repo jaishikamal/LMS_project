@@ -1,4 +1,4 @@
-const Table = ({
+ const Table = ({
   columns,
   renderRow,
   data,

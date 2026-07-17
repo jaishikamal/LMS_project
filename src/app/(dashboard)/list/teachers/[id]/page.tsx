@@ -14,7 +14,7 @@ const SingleTeacherPage = () => {
         {/* TOP */}
         <div className="flex flex-col lg:flex-row gap-4">
           {/* USER INFO CARD */}
-          <div className="bg-lamaSky py-6 px-4 rounded-md flex-1 flex gap-4">
+          <div className="bg-kamal-sky py-6 px-4 rounded-md flex-1 flex gap-4">
             <div className="w-1/3">
               <Image
                 src="https://images.pexels.com/photos/2182970/pexels-photo-2182970.jpeg?auto=compress&cs=tinysrgb&w=1200"
@@ -38,7 +38,7 @@ const SingleTeacherPage = () => {
                     firstName: "Dean",
                     lastName: "Guerrero",
                     phone: "+1 234 567 89",
-                    address: "1234 Main St, Anytown, USA",
+                    address: "ktm, Nepal",
                     bloodType: "A+",
                     dateOfBirth: "2000-01-01",
                     sex: "male",
@@ -140,19 +140,19 @@ const SingleTeacherPage = () => {
         <div className="bg-white p-4 rounded-md">
           <h1 className="text-xl font-semibold">Shortcuts</h1>
           <div className="mt-4 flex gap-4 flex-wrap text-xs text-gray-500">
-            <Link className="p-3 rounded-md bg-lamaSkyLight" href="/">
+            <Link className="p-3 rounded-md bg-kamal-sky-light" href="/">
               Teacher&apos;s Classes
             </Link>
-            <Link className="p-3 rounded-md bg-lamaPurpleLight" href="/">
+            <Link className="p-3 rounded-md bg-kamal-purple-light" href="/">
               Teacher&apos;s Students
             </Link>
-            <Link className="p-3 rounded-md bg-lamaYellowLight" href="/">
+            <Link className="p-3 rounded-md bg-kamal-yellow-light" href="/">
               Teacher&apos;s Lessons
             </Link>
             <Link className="p-3 rounded-md bg-pink-50" href="/">
               Teacher&apos;s Exams
             </Link>
-            <Link className="p-3 rounded-md bg-lamaSkyLight" href="/">
+            <Link className="p-3 rounded-md bg-kamal-sky-light" href="/">
               Teacher&apos;s Assignments
             </Link>
           </div>
