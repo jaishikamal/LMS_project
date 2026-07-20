@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { useState } from "react";
+import { useState,useEffect } from "react";
 
 // USE LAZY LOADING
 
@@ -17,7 +17,7 @@ const StudentForm = dynamic(() => import("./forms/StudentForm"), {
 });
 
 const forms: {
-  [key: string]: (type: "create" | "update", data?: any) => JSX.Element;
+  [key: string]: (type: "create" | "update", data?: any) => React.JSX.Element;
 } = {
   teacher: (type, data) => <TeacherForm type={type} data={data} />,
   student: (type, data) => <StudentForm type={type} data={data} />
@@ -30,18 +30,18 @@ const FormModal = ({
   id,
 }: {
   table:
-    | "teacher"
-    | "student"
-    | "parent"
-    | "subject"
-    | "class"
-    | "lesson"
-    | "exam"
-    | "assignment"
-    | "result"
-    | "attendance"
-    | "event"
-    | "announcement";
+  | "teacher"
+  | "student"
+  | "parent"
+  | "subject"
+  | "class"
+  | "lesson"
+  | "exam"
+  | "assignment"
+  | "result"
+  | "attendance"
+  | "event"
+  | "announcement";
   type: "create" | "update" | "delete";
   data?: any;
   id?: number;
@@ -49,12 +49,35 @@ const FormModal = ({
   const size = type === "create" ? "w-8 h-8" : "w-7 h-7";
   const bgColor =
     type === "create"
-      ? "bg-lamaYellow"
+      ? "bg-kamal-yellow"
       : type === "update"
-      ? "bg-lamaSky"
-      : "bg-lamaPurple";
+        ? "bg-kamal-sky"
+        : "bg-kamal-purple";
 
   const [open, setOpen] = useState(false);
+
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [open]);
+
+  // Close on Escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    if (open) {
+      document.addEventListener("keydown", handleEscape);
+    }
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [open]);
 
   const Form = () => {
     return type === "delete" && id ? (
@@ -67,7 +90,13 @@ const FormModal = ({
         </button>
       </form>
     ) : type === "create" || type === "update" ? (
-      forms[table](type, data)
+      forms[table] ? (
+        forms[table](type, data)
+      ) : (
+        <div className="p-4 text-center text-gray-500">
+          Form for {table} is not implemented yet.
+        </div>
+      )
     ) : (
       "Form not found!"
     );
@@ -78,18 +107,36 @@ const FormModal = ({
       <button
         className={`${size} flex items-center justify-center rounded-full ${bgColor}`}
         onClick={() => setOpen(true)}
+        aria-label={`${type} ${table}`}
       >
         <Image src={`/${type}.png`} alt="" width={16} height={16} />
       </button>
       {open && (
-        <div className="w-screen h-screen absolute left-0 top-0 bg-black bg-opacity-60 z-50 flex items-center justify-center">
-          <div className="bg-white p-4 rounded-md relative w-[90%] md:w-[70%] lg:w-[60%] xl:w-[50%] 2xl:w-[40%]">
-            <Form />
-            <div
-              className="absolute top-4 right-4 cursor-pointer"
-              onClick={() => setOpen(false)}
-            >
-              <Image src="/close.png" alt="" width={14} height={14} />
+        <div
+          className="w-screen h-screen fixed left-0 top-0  bg-opacity-40 z-50 flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200"
+          onClick={(e) => {
+            // Close when clicking backdrop
+            if (e.target === e.currentTarget) setOpen(false);
+          }}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl relative w-full max-w-3xl my-8 animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <div className="flex justify-end p-4 border-b border-gray-100">
+              <button
+                className="cursor-pointer hover:bg-gray-100 rounded-full p-2 transition-all duration-200 hover:rotate-90"
+                onClick={() => setOpen(false)}
+                aria-label="Close modal"
+              >
+                <Image src="/close.png" alt="" width={20} height={20} />
+              </button>
+            </div>
+
+            {/* Form content */}
+            <div className="px-8 pb-8 pt-4">
+              <Form />
             </div>
           </div>
         </div>
