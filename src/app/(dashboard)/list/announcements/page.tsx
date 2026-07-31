@@ -2,7 +2,10 @@ import FormModal from "@/components/FormModal";
 import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
-import { announcementsData, role } from "@/lib/data";
+import { getRole } from "@/lib/auth";
+import { Prisma } from "@/lib/generated/prisma/client";
+import prisma from "@/lib/prisma";
+import { ITEM_PER_PAGE } from "@/lib/settings";
 import Image from "next/image";
 
 type Announcement = {
@@ -32,7 +35,72 @@ const columns = [
   },
 ];
 
-const AnnouncementListPage = () => {
+const dateFormat = new Intl.DateTimeFormat("en-US");
+
+const AnnouncementListPage = async ({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) => {
+  const role = await getRole();
+  const { page: pageParam, ...queryParams } = await searchParams;
+  const page = Math.max(1, Number(pageParam) || 1);
+
+  const query: Prisma.AnnouncementWhereInput = {};
+
+  for (const [rawKey, value] of Object.entries(queryParams)) {
+    if (!value) continue;
+    const param = (Array.isArray(value) ? value[0] : value).trim();
+    if (!param) continue;
+
+    switch (rawKey.toLowerCase()) {
+      case "classid": {
+        const classId = Number(param);
+        if (!Number.isInteger(classId)) break;
+        query.classId = classId;
+        break;
+      }
+      // Announcements with no class are school-wide
+      case "studentid":
+        query.OR = [
+          { classId: null },
+          { class: { students: { some: { id: param } } } },
+        ];
+        break;
+      case "search":
+        query.OR = [
+          { title: { contains: param, mode: "insensitive" } },
+          { description: { contains: param, mode: "insensitive" } },
+          { class: { name: { contains: param, mode: "insensitive" } } },
+        ];
+        break;
+      default:
+        break;
+    }
+  }
+
+  const [announcements, count] = await prisma.$transaction([
+    prisma.announcement.findMany({
+      where: query,
+      include: {
+        class: { select: { name: true } },
+      },
+      orderBy: { date: "desc" },
+      take: ITEM_PER_PAGE,
+      skip: ITEM_PER_PAGE * (page - 1),
+    }),
+    prisma.announcement.count({ where: query }),
+  ]);
+
+  const announcementsData: Announcement[] = announcements.map(
+    (announcement) => ({
+      id: announcement.id,
+      title: announcement.title,
+      class: announcement.class?.name ?? "-",
+      date: dateFormat.format(announcement.date),
+    })
+  );
+
   const renderRow = (item: Announcement) => (
     <tr
       key={item.id}
@@ -79,7 +147,7 @@ const AnnouncementListPage = () => {
       {/* LIST */}
       <Table columns={columns} renderRow={renderRow} data={announcementsData} />
       {/* PAGINATION */}
-      <Pagination />
+      <Pagination page={page} count={count} />
     </div>
   );
 };

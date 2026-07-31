@@ -2,17 +2,20 @@ import FormModal from "@/components/FormModal";
 import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
-import { role, teachersData } from "@/lib/data";
+import { getRole } from "@/lib/auth";
+import { Prisma } from "@/lib/generated/prisma/client";
+import prisma from "@/lib/prisma";
+import { ITEM_PER_PAGE } from "@/lib/settings";
 import Image from "next/image";
 import Link from "next/link";
 
 type Teacher = {
-  id: number;
+  id: string;
   teacherId: string;
   name: string;
-  email?: string;
+  email?: string | null;
   photo: string;
-  phone: string;
+  phone: string | null;
   subjects: string[];
   classes: string[];
   address: string;
@@ -54,7 +57,98 @@ const columns = [
   },
 ];
 
-const TeacherListPage = () => {
+const TeacherListPage = async ({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) => {
+  const role = await getRole();
+  const { page: pageParam, ...queryParams } = await searchParams;
+  const page = Math.max(1, Number(pageParam) || 1);
+
+  // Build the Prisma filter from the URL query params
+  const query: Prisma.TeacherWhereInput = {};
+
+  for (const [rawKey, value] of Object.entries(queryParams)) {
+    if (!value) continue;
+    const param = (Array.isArray(value) ? value[0] : value).trim();
+    if (!param) continue;
+
+    // Match keys case-insensitively so ?classId=3 and ?classid=3 both work
+    switch (rawKey.toLowerCase()) {
+      // Only show teachers who teach a lesson to this student's class
+      case "studentid":
+        query.lessons = {
+          some: {
+            class: {
+              students: {
+                some: { id: param },
+              },
+            },
+          },
+        };
+        break;
+      // Only show teachers who teach a lesson to this class
+      case "classid": {
+        const classId = Number(param);
+        if (!Number.isInteger(classId)) break;
+        query.lessons = {
+          some: { classId },
+        };
+        break;
+      }
+      case "subjectid": {
+        const subjectId = Number(param);
+        if (!Number.isInteger(subjectId)) break;
+        query.subjects = {
+          some: { id: subjectId },
+        };
+        break;
+      }
+      case "search": {
+        // Match every word against any field, so "TName1 TSurname1"
+        // (the full name shown in the table) also matches.
+        const terms = param.split(/\s+/).filter(Boolean);
+        query.AND = terms.map((term) => ({
+          OR: [
+            { name: { contains: term, mode: "insensitive" } },
+            { surname: { contains: term, mode: "insensitive" } },
+            { username: { contains: term, mode: "insensitive" } },
+            { email: { contains: term, mode: "insensitive" } },
+          ],
+        }));
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  const [teachers, count] = await prisma.$transaction([
+    prisma.teacher.findMany({
+      where: query,
+      include: {
+        subjects: true,
+        classes: true,
+      },
+      take: ITEM_PER_PAGE,
+      skip: ITEM_PER_PAGE * (page - 1),
+    }),
+    prisma.teacher.count({ where: query }),
+  ]);
+
+  const teachersData: Teacher[] = teachers.map((teacher) => ({
+    id: teacher.id,
+    teacherId: teacher.username,
+    name: `${teacher.name} ${teacher.surname}`,
+    email: teacher.email,
+    photo: teacher.img || "/avatar.png",
+    phone: teacher.phone,
+    subjects: teacher.subjects.map((subject) => subject.name),
+    classes: teacher.classes.map((classItem) => classItem.name),
+    address: teacher.address,
+  }));
+
   const renderRow = (item: Teacher) => (
     <tr
       key={item.id}
@@ -89,7 +183,7 @@ const TeacherListPage = () => {
             // <button className="w-7 h-7 flex items-center justify-center rounded-full bg-kamal-purple">
             //   <Image src="/delete.png" alt="" width={16} height={16} />
             // </button>
-            <FormModal table="teacher" type="delete" id={item.id}/>
+            <FormModal table="teacher" type="delete" id={item.id} />
           )}
         </div>
       </td>
@@ -114,7 +208,7 @@ const TeacherListPage = () => {
               // <button className="w-8 h-8 flex items-center justify-center rounded-full bg-kamal-yellow">
               //   <Image src="/plus.png" alt="" width={14} height={14} />
               // </button>
-              <FormModal table="teacher" type="create"/>
+              <FormModal table="teacher" type="create" />
             )}
           </div>
         </div>
@@ -122,7 +216,7 @@ const TeacherListPage = () => {
       {/* LIST */}
       <Table columns={columns} renderRow={renderRow} data={teachersData} />
       {/* PAGINATION */}
-      <Pagination />
+      <Pagination page={page} count={count} />
     </div>
   );
 };

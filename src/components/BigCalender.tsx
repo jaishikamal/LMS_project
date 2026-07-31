@@ -1,9 +1,30 @@
 "use client";
-import { Calendar, momentLocalizer, View, Views } from "react-big-calendar";
+import {
+  CalendarProps,
+  momentLocalizer,
+  View,
+  Views,
+} from "react-big-calendar";
 import moment from "moment";
 import { calendarEvents } from "@/lib/data";
 import "react-big-calendar/lib/css/react-big-calendar.css";
+import dynamic from "next/dynamic";
+import { ComponentType } from "react";
 import { useState } from "react";
+
+type CalendarEvent = (typeof calendarEvents)[number];
+
+// react-big-calendar formats its date headers and time gutter through moment,
+// which resolves the timezone and locale of whatever runtime renders it. The
+// server and browser disagree, so render it client-only to avoid a hydration
+// mismatch. The cast restores the event generic that `dynamic` erases.
+const Calendar = dynamic(
+  () => import("react-big-calendar").then((mod) => mod.Calendar),
+  {
+    ssr: false,
+    loading: () => <div className="h-full" />,
+  }
+) as ComponentType<CalendarProps<CalendarEvent>>;
 
 const localizer = momentLocalizer(moment);
 

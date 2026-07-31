@@ -2,7 +2,10 @@ import FormModal from "@/components/FormModal";
 import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
-import { lessonsData, role } from "@/lib/data";
+import { getRole } from "@/lib/auth";
+import { Prisma } from "@/lib/generated/prisma/client";
+import prisma from "@/lib/prisma";
+import { ITEM_PER_PAGE } from "@/lib/settings";
 import Image from "next/image";
 
 type Lesson = {
@@ -32,7 +35,81 @@ const columns = [
   },
 ];
 
-const LessonListPage = () => {
+const LessonListPage = async ({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) => {
+  const role = await getRole();
+  const { page: pageParam, ...queryParams } = await searchParams;
+  const page = Math.max(1, Number(pageParam) || 1);
+
+  const query: Prisma.LessonWhereInput = {};
+
+  for (const [rawKey, value] of Object.entries(queryParams)) {
+    if (!value) continue;
+    const param = (Array.isArray(value) ? value[0] : value).trim();
+    if (!param) continue;
+
+    switch (rawKey.toLowerCase()) {
+      case "teacherid":
+        query.teacherId = param;
+        break;
+      case "classid": {
+        const classId = Number(param);
+        if (!Number.isInteger(classId)) break;
+        query.classId = classId;
+        break;
+      }
+      case "subjectid": {
+        const subjectId = Number(param);
+        if (!Number.isInteger(subjectId)) break;
+        query.subjectId = subjectId;
+        break;
+      }
+      case "studentid":
+        query.class = {
+          students: {
+            some: { id: param },
+          },
+        };
+        break;
+      case "search":
+        query.OR = [
+          { name: { contains: param, mode: "insensitive" } },
+          { subject: { name: { contains: param, mode: "insensitive" } } },
+          { class: { name: { contains: param, mode: "insensitive" } } },
+          { teacher: { name: { contains: param, mode: "insensitive" } } },
+          { teacher: { surname: { contains: param, mode: "insensitive" } } },
+        ];
+        break;
+      default:
+        break;
+    }
+  }
+
+  const [lessons, count] = await prisma.$transaction([
+    prisma.lesson.findMany({
+      where: query,
+      include: {
+        subject: { select: { name: true } },
+        class: { select: { name: true } },
+        teacher: { select: { name: true, surname: true } },
+      },
+      orderBy: { id: "asc" },
+      take: ITEM_PER_PAGE,
+      skip: ITEM_PER_PAGE * (page - 1),
+    }),
+    prisma.lesson.count({ where: query }),
+  ]);
+
+  const lessonsData: Lesson[] = lessons.map((lesson) => ({
+    id: lesson.id,
+    subject: lesson.subject.name,
+    class: lesson.class.name,
+    teacher: `${lesson.teacher.name} ${lesson.teacher.surname}`,
+  }));
+
   const renderRow = (item: Lesson) => (
     <tr
       key={item.id}
@@ -75,7 +152,7 @@ const LessonListPage = () => {
       {/* LIST */}
       <Table columns={columns} renderRow={renderRow} data={lessonsData} />
       {/* PAGINATION */}
-      <Pagination />
+      <Pagination page={page} count={count} />
     </div>
   );
 };

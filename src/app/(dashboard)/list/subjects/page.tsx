@@ -2,7 +2,10 @@ import FormModal from "@/components/FormModal";
 import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
-import { role, subjectsData } from "@/lib/data";
+import { getRole } from "@/lib/auth";
+import { Prisma } from "@/lib/generated/prisma/client";
+import prisma from "@/lib/prisma";
+import { ITEM_PER_PAGE } from "@/lib/settings";
 import Image from "next/image";
 
 type Subject = {
@@ -27,7 +30,57 @@ const columns = [
   },
 ];
 
-const SubjectListPage = () => {
+const SubjectListPage = async ({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) => {
+  const role = await getRole();
+  const { page: pageParam, ...queryParams } = await searchParams;
+  const page = Math.max(1, Number(pageParam) || 1);
+
+  const query: Prisma.SubjectWhereInput = {};
+
+  for (const [rawKey, value] of Object.entries(queryParams)) {
+    if (!value) continue;
+    const param = (Array.isArray(value) ? value[0] : value).trim();
+    if (!param) continue;
+
+    switch (rawKey.toLowerCase()) {
+      case "teacherid":
+        query.teachers = {
+          some: { id: param },
+        };
+        break;
+      case "search":
+        query.name = { contains: param, mode: "insensitive" };
+        break;
+      default:
+        break;
+    }
+  }
+
+  const [subjects, count] = await prisma.$transaction([
+    prisma.subject.findMany({
+      where: query,
+      include: {
+        teachers: true,
+      },
+      orderBy: { name: "asc" },
+      take: ITEM_PER_PAGE,
+      skip: ITEM_PER_PAGE * (page - 1),
+    }),
+    prisma.subject.count({ where: query }),
+  ]);
+
+  const subjectsData: Subject[] = subjects.map((subject) => ({
+    id: subject.id,
+    name: subject.name,
+    teachers: subject.teachers.map(
+      (teacher) => `${teacher.name} ${teacher.surname}`
+    ),
+  }));
+
   const renderRow = (item: Subject) => (
     <tr
       key={item.id}
@@ -62,14 +115,14 @@ const SubjectListPage = () => {
             <button className="w-8 h-8 flex items-center justify-center rounded-full bg-kamal-yellow">
               <Image src="/sort.png" alt="" width={14} height={14} />
             </button>
-            {role === "admin" && <FormModal table="teacher" type="create" />}
+            {role === "admin" && <FormModal table="subject" type="create" />}
           </div>
         </div>
       </div>
       {/* LIST */}
       <Table columns={columns} renderRow={renderRow} data={subjectsData} />
       {/* PAGINATION */}
-      <Pagination />
+      <Pagination page={page} count={count} />
     </div>
   );
 };

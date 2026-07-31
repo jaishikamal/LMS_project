@@ -4,7 +4,13 @@ import Performance from "@/components/Performance";
 import Image from "next/image";
 import Link from "next/link";
 
-const SingleStudentPage = () => {
+const SingleStudentPage = async ({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) => {
+  const { id } = await params;
+
   return (
     <div className="flex-1 p-4 flex flex-col gap-4 xl:flex-row">
       {/* LEFT */}
@@ -121,7 +127,10 @@ const SingleStudentPage = () => {
             <Link className="p-3 rounded-md bg-kamal-sky-light" href="/">
               Student&apos;s Lessons
             </Link>
-            <Link className="p-3 rounded-md bg-kamal-purple-light" href="/">
+            <Link
+              className="p-3 rounded-md bg-kamal-purple-light"
+              href={`/list/teachers?studentId=${id}`}
+            >
               Student&apos;s Teachers
             </Link>
             <Link className="p-3 rounded-md bg-pink-50" href="/">

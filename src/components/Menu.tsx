@@ -1,6 +1,7 @@
-import { role } from "@/lib/data";
+import type { Role } from "@/lib/roles";
 import Image from "next/image";
 import Link from "next/link";
+import LogoutButton from "./LogoutButton";
 
 const menuItems = [
   {
@@ -107,17 +108,14 @@ const menuItems = [
         href: "/settings",
         visible: ["admin", "teacher", "student", "parent"],
       },
-      {
-        icon: "/logout.png",
-        label: "Logout",
-        href: "/logout",
-        visible: ["admin", "teacher", "student", "parent"],
-      },
     ],
   },
 ];
 
-const Menu = () => {
+const itemClassName =
+  "flex items-center justify-center lg:justify-start gap-4 text-gray-500 py-2 md:px-2 rounded-md hover:bg-kamal-sky-light";
+
+const Menu = ({ role }: { role: Role }) => {
   return (
     <div className="mt-4 text-sm">
       {menuItems.map((i) => (
@@ -128,11 +126,7 @@ const Menu = () => {
           {i.items.map((item) => {
             if (item.visible.includes(role)) {
               return (
-                <Link
-                  href={item.href}
-                  key={item.label}
-                  className="flex items-center justify-center lg:justify-start gap-4 text-gray-500 py-2 md:px-2 rounded-md hover:bg-kamal-sky-light"
-                >
+                <Link href={item.href} key={item.label} className={itemClassName}>
                   <Image src={item.icon} alt="" width={20} height={20} />
                   <span className="hidden lg:block">{item.label}</span>
                 </Link>
@@ -140,6 +134,9 @@ const Menu = () => {
             }
             return null;
           })}
+          {i.title === "OTHER" && (
+            <LogoutButton className={`${itemClassName} cursor-pointer`} />
+          )}
         </div>
       ))}
     </div>

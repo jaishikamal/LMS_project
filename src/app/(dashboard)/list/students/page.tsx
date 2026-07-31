@@ -2,17 +2,20 @@ import FormModal from "@/components/FormModal";
 import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
-import { role, studentsData } from "@/lib/data";
+import { getRole } from "@/lib/auth";
+import { Prisma } from "@/lib/generated/prisma/client";
+import prisma from "@/lib/prisma";
+import { ITEM_PER_PAGE } from "@/lib/settings";
 import Image from "next/image";
 import Link from "next/link";
 
 type Student = {
-  id: number;
+  id: string;
   studentId: string;
   name: string;
-  email?: string;
+  email?: string | null;
   photo: string;
-  phone?: string;
+  phone?: string | null;
   grade: number;
   class: string;
   address: string;
@@ -49,7 +52,89 @@ const columns = [
   },
 ];
 
-const StudentListPage = () => {
+const StudentListPage = async ({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) => {
+  const role = await getRole();
+  const { page: pageParam, ...queryParams } = await searchParams;
+  const page = Math.max(1, Number(pageParam) || 1);
+
+  const query: Prisma.StudentWhereInput = {};
+
+  for (const [rawKey, value] of Object.entries(queryParams)) {
+    if (!value) continue;
+    const param = (Array.isArray(value) ? value[0] : value).trim();
+    if (!param) continue;
+
+    switch (rawKey.toLowerCase()) {
+      // Students taught by this teacher, via the lessons of their class
+      case "teacherid":
+        query.class = {
+          lessons: {
+            some: { teacherId: param },
+          },
+        };
+        break;
+      case "classid": {
+        const classId = Number(param);
+        if (!Number.isInteger(classId)) break;
+        query.classId = classId;
+        break;
+      }
+      case "gradeid": {
+        const gradeId = Number(param);
+        if (!Number.isInteger(gradeId)) break;
+        query.gradeId = gradeId;
+        break;
+      }
+      case "parentid":
+        query.parentId = param;
+        break;
+      case "search": {
+        const terms = param.split(/\s+/).filter(Boolean);
+        query.AND = terms.map((term) => ({
+          OR: [
+            { name: { contains: term, mode: "insensitive" } },
+            { surname: { contains: term, mode: "insensitive" } },
+            { username: { contains: term, mode: "insensitive" } },
+            { email: { contains: term, mode: "insensitive" } },
+          ],
+        }));
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  const [students, count] = await prisma.$transaction([
+    prisma.student.findMany({
+      where: query,
+      include: {
+        class: true,
+        grade: true,
+      },
+      orderBy: { username: "asc" },
+      take: ITEM_PER_PAGE,
+      skip: ITEM_PER_PAGE * (page - 1),
+    }),
+    prisma.student.count({ where: query }),
+  ]);
+
+  const studentsData: Student[] = students.map((student) => ({
+    id: student.id,
+    studentId: student.username,
+    name: `${student.name} ${student.surname}`,
+    email: student.email,
+    photo: student.img || "/avatar.png",
+    phone: student.phone,
+    grade: student.grade.level,
+    class: student.class.name,
+    address: student.address,
+  }));
+
   const renderRow = (item: Student) => (
     <tr
       key={item.id}
@@ -80,9 +165,6 @@ const StudentListPage = () => {
             </button>
           </Link>
           {role === "admin" && (
-            // <button className="w-7 h-7 flex items-center justify-center rounded-full bg-kamal-purple">
-            //   <Image src="/delete.png" alt="" width={16} height={16} />
-            // </button>
             <FormModal table="student" type="delete" id={item.id} />
           )}
         </div>
@@ -105,9 +187,6 @@ const StudentListPage = () => {
               <Image src="/sort.png" alt="" width={14} height={14} />
             </button>
             {role === "admin" && (
-              // <button className="w-8 h-8 flex items-center justify-center rounded-full bg-kamal-yellow">
-              //   <Image src="/plus.png" alt="" width={14} height={14} />
-              // </button>
               <FormModal table="student" type="create" />
             )}
           </div>
@@ -116,7 +195,7 @@ const StudentListPage = () => {
       {/* LIST */}
       <Table columns={columns} renderRow={renderRow} data={studentsData} />
       {/* PAGINATION */}
-      <Pagination />
+      <Pagination page={page} count={count} />
     </div>
   );
 };

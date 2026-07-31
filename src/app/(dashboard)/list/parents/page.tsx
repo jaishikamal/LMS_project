@@ -2,13 +2,16 @@ import FormModal from "@/components/FormModal";
 import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
-import { parentsData, role } from "@/lib/data";
+import { getRole } from "@/lib/auth";
+import { Prisma } from "@/lib/generated/prisma/client";
+import prisma from "@/lib/prisma";
+import { ITEM_PER_PAGE } from "@/lib/settings";
 import Image from "next/image";
 
 type Parent = {
-  id: number;
+  id: string;
   name: string;
-  email?: string;
+  email?: string | null;
   students: string[];
   phone: string;
   address: string;
@@ -40,7 +43,75 @@ const columns = [
   },
 ];
 
-const ParentListPage = () => {
+const ParentListPage = async ({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) => {
+  const role = await getRole();
+  const { page: pageParam, ...queryParams } = await searchParams;
+  const page = Math.max(1, Number(pageParam) || 1);
+
+  const query: Prisma.ParentWhereInput = {};
+
+  for (const [rawKey, value] of Object.entries(queryParams)) {
+    if (!value) continue;
+    const param = (Array.isArray(value) ? value[0] : value).trim();
+    if (!param) continue;
+
+    switch (rawKey.toLowerCase()) {
+      case "studentid":
+        query.students = {
+          some: { id: param },
+        };
+        break;
+      case "classid": {
+        const classId = Number(param);
+        if (!Number.isInteger(classId)) break;
+        query.students = {
+          some: { classId },
+        };
+        break;
+      }
+      case "search": {
+        const terms = param.split(/\s+/).filter(Boolean);
+        query.AND = terms.map((term) => ({
+          OR: [
+            { name: { contains: term, mode: "insensitive" } },
+            { surname: { contains: term, mode: "insensitive" } },
+            { username: { contains: term, mode: "insensitive" } },
+            { email: { contains: term, mode: "insensitive" } },
+          ],
+        }));
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  const [parents, count] = await prisma.$transaction([
+    prisma.parent.findMany({
+      where: query,
+      include: {
+        students: true,
+      },
+      orderBy: { username: "asc" },
+      take: ITEM_PER_PAGE,
+      skip: ITEM_PER_PAGE * (page - 1),
+    }),
+    prisma.parent.count({ where: query }),
+  ]);
+
+  const parentsData: Parent[] = parents.map((parent) => ({
+    id: parent.id,
+    name: `${parent.name} ${parent.surname}`,
+    email: parent.email,
+    students: parent.students.map((student) => student.name),
+    phone: parent.phone,
+    address: parent.address,
+  }));
+
   const renderRow = (item: Parent) => (
     <tr
       key={item.id}
@@ -82,16 +153,14 @@ const ParentListPage = () => {
             <button className="w-8 h-8 flex items-center justify-center rounded-full bg-kamal-yellow">
               <Image src="/sort.png" alt="" width={14} height={14} />
             </button>
-            {role === "admin" && (
-              <FormModal table="teacher" type="create" />
-            )}
+            {role === "admin" && <FormModal table="parent" type="create" />}
           </div>
         </div>
       </div>
       {/* LIST */}
       <Table columns={columns} renderRow={renderRow} data={parentsData} />
       {/* PAGINATION */}
-      <Pagination />
+      <Pagination page={page} count={count} />
     </div>
   );
 };

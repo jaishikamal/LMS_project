@@ -1,6 +1,5 @@
 // TEMPORARY DATA
-
-export let role = "admin"; // "admin" | "teacher" | "student" | "parent"
+// The role now comes from Clerk (see src/lib/auth.ts), not from this file.
 
 export const teachersData = [
   {

@@ -1,13 +1,18 @@
 import Menu from "@/components/Menu";
 import Navbar from "@/components/Navbar";
+import { ROLES } from "@/lib/roles";
+import { requireRole } from "@/lib/auth";
 import Image from "next/image";
 import Link from "next/link";
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Every dashboard route requires a signed-in user with a known role.
+  const { role } = await requireRole(ROLES);
+
   return (
     <div className="h-screen flex">
       {/* /* LEFT */}
@@ -25,7 +30,7 @@ export default function DashboardLayout({
             <span className="hidden lg:block text-lg font-semibold">LMS</span>
           </Link>
         </div>
-        <Menu />
+        <Menu role={role} />
       </div>
       {/* RIGHT */}
       <div className="w-[86%] md:w-[92%] lg:w-[84%] xl:w-[86%] bg-[#F7F8FA] overflow-scroll flex flex-col">

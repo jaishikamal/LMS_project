@@ -1,9 +1,18 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Image from "next/image";
-import { useState } from "react";
-import Calendar from "react-calendar";
+import { useEffect, useState } from "react";
 import "react-calendar/dist/Calendar.css";
+
+// react-calendar renders tile attributes (aria-labels, the "now" class) derived
+// from the current date, using the runtime's timezone and locale. The server and
+// the browser disagree on those, which produces a hydration mismatch. Rendering
+// it client-only sidesteps the problem entirely.
+const Calendar = dynamic(() => import("react-calendar"), {
+  ssr: false,
+  loading: () => <div className="h-[300px]" />,
+});
 
 type ValuePiece = Date | null;
 
@@ -32,7 +41,13 @@ const events = [
 ];
 
 const EventCalendar = () => {
-  const [value, onChange] = useState<Value>(new Date());
+  // Set after mount rather than in the initialiser, so the date comes from the
+  // browser instead of being baked into the server HTML.
+  const [value, onChange] = useState<Value>(null);
+
+  useEffect(() => {
+    onChange(new Date());
+  }, []);
 
   return (
     <div className="bg-white p-4 rounded-md">

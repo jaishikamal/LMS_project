@@ -2,7 +2,10 @@ import FormModal from "@/components/FormModal";
 import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
-import { classesData, role } from "@/lib/data";
+import { getRole } from "@/lib/auth";
+import { Prisma } from "@/lib/generated/prisma/client";
+import prisma from "@/lib/prisma";
+import { ITEM_PER_PAGE } from "@/lib/settings";
 import Image from "next/image";
 
 type Class = {
@@ -39,7 +42,70 @@ const columns = [
   },
 ];
 
-const ClassListPage = () => {
+const ClassListPage = async ({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) => {
+  const role = await getRole();
+  const { page: pageParam, ...queryParams } = await searchParams;
+  const page = Math.max(1, Number(pageParam) || 1);
+
+  const query: Prisma.ClassWhereInput = {};
+
+  for (const [rawKey, value] of Object.entries(queryParams)) {
+    if (!value) continue;
+    const param = (Array.isArray(value) ? value[0] : value).trim();
+    if (!param) continue;
+
+    switch (rawKey.toLowerCase()) {
+      case "supervisorid":
+        query.supervisorId = param;
+        break;
+      case "teacherid":
+        query.lessons = {
+          some: { teacherId: param },
+        };
+        break;
+      case "gradeid": {
+        const gradeId = Number(param);
+        if (!Number.isInteger(gradeId)) break;
+        query.gradeId = gradeId;
+        break;
+      }
+      case "search":
+        query.name = { contains: param, mode: "insensitive" };
+        break;
+      default:
+        break;
+    }
+  }
+
+  const [classes, count] = await prisma.$transaction([
+    prisma.class.findMany({
+      where: query,
+      include: {
+        grade: true,
+        supervisor: true,
+      },
+      orderBy: { name: "asc" },
+      take: ITEM_PER_PAGE,
+      skip: ITEM_PER_PAGE * (page - 1),
+    }),
+    prisma.class.count({ where: query }),
+  ]);
+
+  const classesData: Class[] = classes.map((classItem) => ({
+    id: classItem.id,
+    name: classItem.name,
+    capacity: classItem.capacity,
+    grade: classItem.grade.level,
+    // supervisorId is optional in the schema, so there may be no supervisor
+    supervisor: classItem.supervisor
+      ? `${classItem.supervisor.name} ${classItem.supervisor.surname}`
+      : "-",
+  }));
+
   const renderRow = (item: Class) => (
     <tr
       key={item.id}
@@ -83,7 +149,7 @@ const ClassListPage = () => {
       {/* LIST */}
       <Table columns={columns} renderRow={renderRow} data={classesData} />
       {/* PAGINATION */}
-      <Pagination />
+      <Pagination page={page} count={count} />
     </div>
   );
 };

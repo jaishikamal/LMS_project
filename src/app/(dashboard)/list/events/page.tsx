@@ -2,7 +2,10 @@ import FormModal from "@/components/FormModal";
 import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
-import { eventsData, role } from "@/lib/data";
+import { getRole } from "@/lib/auth";
+import { Prisma } from "@/lib/generated/prisma/client";
+import prisma from "@/lib/prisma";
+import { ITEM_PER_PAGE } from "@/lib/settings";
 import Image from "next/image";
 
 type Event = {
@@ -44,7 +47,79 @@ const columns = [
   },
 ];
 
-const EventListPage = () => {
+const dateFormat = new Intl.DateTimeFormat("en-US");
+const timeFormat = new Intl.DateTimeFormat("en-US", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+const EventListPage = async ({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) => {
+  const role = await getRole();
+  const { page: pageParam, ...queryParams } = await searchParams;
+  const page = Math.max(1, Number(pageParam) || 1);
+
+  const query: Prisma.EventWhereInput = {};
+
+  for (const [rawKey, value] of Object.entries(queryParams)) {
+    if (!value) continue;
+    const param = (Array.isArray(value) ? value[0] : value).trim();
+    if (!param) continue;
+
+    switch (rawKey.toLowerCase()) {
+      case "classid": {
+        const classId = Number(param);
+        if (!Number.isInteger(classId)) break;
+        query.classId = classId;
+        break;
+      }
+      // Events with no class are school-wide, so include them alongside
+      // the ones targeted at this student's class.
+      case "studentid":
+        query.OR = [
+          { classId: null },
+          { class: { students: { some: { id: param } } } },
+        ];
+        break;
+      case "search":
+        query.OR = [
+          { title: { contains: param, mode: "insensitive" } },
+          { description: { contains: param, mode: "insensitive" } },
+          { class: { name: { contains: param, mode: "insensitive" } } },
+        ];
+        break;
+      default:
+        break;
+    }
+  }
+
+  const [events, count] = await prisma.$transaction([
+    prisma.event.findMany({
+      where: query,
+      include: {
+        class: { select: { name: true } },
+      },
+      orderBy: { startTime: "desc" },
+      take: ITEM_PER_PAGE,
+      skip: ITEM_PER_PAGE * (page - 1),
+    }),
+    prisma.event.count({ where: query }),
+  ]);
+
+  const eventsData: Event[] = events.map((event) => ({
+    id: event.id,
+    title: event.title,
+    // classId is optional: no class means the event is school-wide
+    class: event.class?.name ?? "-",
+    date: dateFormat.format(event.startTime),
+    startTime: timeFormat.format(event.startTime),
+    endTime: timeFormat.format(event.endTime),
+  }));
+
   const renderRow = (item: Event) => (
     <tr
       key={item.id}
@@ -89,7 +164,7 @@ const EventListPage = () => {
       {/* LIST */}
       <Table columns={columns} renderRow={renderRow} data={eventsData} />
       {/* PAGINATION */}
-      <Pagination />
+      <Pagination page={page} count={count} />
     </div>
   );
 };
