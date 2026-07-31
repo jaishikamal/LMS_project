@@ -2,9 +2,9 @@ import FormModal from "@/components/FormModal";
 import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
-import { getRole } from "@/lib/auth";
-import { Prisma } from "@/lib/generated/prisma/client";
+import { Prisma, UserSex } from "@/lib/generated/prisma/client";
 import prisma from "@/lib/prisma";
+import { applyRoleCondition, getRoleScope } from "@/lib/roleScope";
 import { ITEM_PER_PAGE } from "@/lib/settings";
 import Image from "next/image";
 import Link from "next/link";
@@ -19,9 +19,18 @@ type Teacher = {
   subjects: string[];
   classes: string[];
   address: string;
+  // Raw values for the update form (see the mapping below).
+  username: string;
+  firstName: string;
+  surname: string;
+  bloodType: string;
+  sex: UserSex;
+  birthday: Date;
+  img: string | null;
+  subjectIds: number[];
 };
 
-const columns = [
+const baseColumns = [
   {
     header: "Info",
     accessor: "info",
@@ -51,23 +60,34 @@ const columns = [
     accessor: "address",
     className: "hidden lg:table-cell",
   },
-  {
-    header: "Actions",
-    accessor: "action",
-  },
 ];
+
+const actionColumn = {
+  header: "Actions",
+  accessor: "action",
+};
 
 const TeacherListPage = async ({
   searchParams,
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
-  const role = await getRole();
+  const { role, classIds } = await getRoleScope();
   const { page: pageParam, ...queryParams } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
 
+  const columns = role === "student" ? baseColumns : [...baseColumns, actionColumn];
+
   // Build the Prisma filter from the URL query params
   const query: Prisma.TeacherWhereInput = {};
+
+  // Teachers only see colleagues who teach within their own classes. Kept
+  // as a separate AND clause (applied below) so it can't be overwritten by
+  // a `classId`/`subjectId` query param targeting the same field.
+  const roleCondition: Prisma.TeacherWhereInput | null =
+    role === "teacher" && classIds
+      ? { lessons: { some: { classId: { in: classIds } } } }
+      : null;
 
   for (const [rawKey, value] of Object.entries(queryParams)) {
     if (!value) continue;
@@ -124,7 +144,12 @@ const TeacherListPage = async ({
     }
   }
 
-  const [teachers, count] = await prisma.$transaction([
+  applyRoleCondition(query, roleCondition);
+
+  // Independent read-only queries: Promise.all avoids the interactive
+  // transaction timeout that $transaction([...]) would impose on a remote
+  // pooled connection.
+  const [teachers, count, allSubjects] = await Promise.all([
     prisma.teacher.findMany({
       where: query,
       include: {
@@ -135,7 +160,21 @@ const TeacherListPage = async ({
       skip: ITEM_PER_PAGE * (page - 1),
     }),
     prisma.teacher.count({ where: query }),
+    // Options for the form's subject multi-select.
+    role === "admin"
+      ? prisma.subject.findMany({
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      })
+      : Promise.resolve([]),
   ]);
+
+  const relatedData = {
+    subjects: allSubjects.map((subject) => ({
+      value: subject.id,
+      label: subject.name,
+    })),
+  };
 
   const teachersData: Teacher[] = teachers.map((teacher) => ({
     id: teacher.id,
@@ -147,6 +186,18 @@ const TeacherListPage = async ({
     subjects: teacher.subjects.map((subject) => subject.name),
     classes: teacher.classes.map((classItem) => classItem.name),
     address: teacher.address,
+    // Raw fields the update form needs (the display values above are joined
+    // or renamed, so they can't be reused for form defaults).
+    username: teacher.username,
+    firstName: teacher.name,
+    surname: teacher.surname,
+    bloodType: teacher.bloodType,
+    sex: teacher.sex,
+    birthday: teacher.birthday,
+    // Raw column (not the avatar-fallback `photo` above) so the update form
+    // can preview the existing upload and keep it on save.
+    img: teacher.img,
+    subjectIds: teacher.subjects.map((subject) => subject.id),
   }));
 
   const renderRow = (item: Teacher) => (
@@ -172,21 +223,28 @@ const TeacherListPage = async ({
       <td className="hidden md:table-cell">{item.classes.join(",")}</td>
       <td className="hidden md:table-cell">{item.phone}</td>
       <td className="hidden md:table-cell">{item.address}</td>
-      <td>
-        <div className="flex items-center gap-2">
-          <Link href={`/list/teachers/${item.id}`}>
-            <button className="w-7 h-7 flex items-center justify-center rounded-full bg-kamal-sky">
-              <Image src="/view.png" alt="" width={16} height={16} />
-            </button>
-          </Link>
-          {role === "admin" && (
-            // <button className="w-7 h-7 flex items-center justify-center rounded-full bg-kamal-purple">
-            //   <Image src="/delete.png" alt="" width={16} height={16} />
-            // </button>
-            <FormModal table="teacher" type="delete" id={item.id} />
-          )}
-        </div>
-      </td>
+      {role !== "student" && (
+        <td>
+          <div className="flex items-center gap-2">
+            <Link href={`/list/teachers/${item.id}`}>
+              <button className="w-7 h-7 flex items-center justify-center rounded-full bg-kamal-sky">
+                <Image src="/view.png" alt="" width={16} height={16} />
+              </button>
+            </Link>
+            {role === "admin" && (
+              <>
+                <FormModal
+                  table="teacher"
+                  type="update"
+                  data={item}
+                  relatedData={relatedData}
+                />
+                <FormModal table="teacher" type="delete" id={item.id} />
+              </>
+            )}
+          </div>
+        </td>
+      )}
     </tr>
   );
 
@@ -205,10 +263,11 @@ const TeacherListPage = async ({
               <Image src="/sort.png" alt="" width={14} height={14} />
             </button>
             {role === "admin" && (
-              // <button className="w-8 h-8 flex items-center justify-center rounded-full bg-kamal-yellow">
-              //   <Image src="/plus.png" alt="" width={14} height={14} />
-              // </button>
-              <FormModal table="teacher" type="create" />
+              <FormModal
+                table="teacher"
+                type="create"
+                relatedData={relatedData}
+              />
             )}
           </div>
         </div>

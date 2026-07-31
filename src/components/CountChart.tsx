@@ -7,25 +7,29 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-const data = [
-  {
-    name: "Total",
-    count: 106,
-    fill: "white",
-  },
-  {
-    name: "Girls",
-    count: 53,
-    fill: "#FAE27C",
-  },
-  {
-    name: "Boys",
-    count: 53,
-    fill: "#C3EBFA",
-  },
-];
+const CountChart = ({ boys, girls }: { boys: number; girls: number }) => {
+  const total = boys + girls;
+  const boysPercent = total > 0 ? Math.round((boys / total) * 100) : 0;
+  const girlsPercent = total > 0 ? Math.round((girls / total) * 100) : 0;
 
-const CountChart = () => {
+  const data = [
+    {
+      name: "Total",
+      count: total,
+      fill: "white",
+    },
+    {
+      name: "Girls",
+      count: girls,
+      fill: "#FAE27C",
+    },
+    {
+      name: "Boys",
+      count: boys,
+      fill: "#C3EBFA",
+    },
+  ];
+
   return (
     <div className="bg-white rounded-xl w-full h-full p-4">
       {/* TITLE */}
@@ -59,13 +63,13 @@ const CountChart = () => {
       <div className="flex justify-center gap-16">
         <div className="flex flex-col gap-1">
           <div className="w-5 h-5 bg-kamal-sky rounded-full" />
-          <h1 className="font-bold">1,234</h1>
-          <h2 className="text-xs text-gray-300">Boys (55%)</h2>
+          <h1 className="font-bold">{boys.toLocaleString()}</h1>
+          <h2 className="text-xs text-gray-300">Boys ({boysPercent}%)</h2>
         </div>
         <div className="flex flex-col gap-1">
           <div className="w-5 h-5 bg-kamal-yellow rounded-full" />
-          <h1 className="font-bold">1,234</h1>
-          <h2 className="text-xs text-gray-300">Girls (45%)</h2>
+          <h1 className="font-bold">{girls.toLocaleString()}</h1>
+          <h2 className="text-xs text-gray-300">Girls ({girlsPercent}%)</h2>
         </div>
       </div>
     </div>

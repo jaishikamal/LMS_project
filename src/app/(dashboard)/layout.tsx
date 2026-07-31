@@ -1,5 +1,6 @@
 import Menu from "@/components/Menu";
 import Navbar from "@/components/Navbar";
+import ToastProvider from "@/components/ToastProvider";
 import { ROLES } from "@/lib/roles";
 import { requireRole } from "@/lib/auth";
 import Image from "next/image";
@@ -37,6 +38,7 @@ export default async function DashboardLayout({
         <Navbar />
         {children}
       </div>
+      <ToastProvider />
     </div>
   );
 }

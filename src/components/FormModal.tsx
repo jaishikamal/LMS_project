@@ -2,12 +2,19 @@
 
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useEffect, useTransition } from "react";
+import { toast } from "react-toastify";
+import {
+  deleteClass,
+  deleteStudent,
+  deleteSubject,
+  deleteTeacher,
+} from "@/lib/actions";
+import type { ActionState } from "@/lib/actionState";
+import type { SelectOption } from "./SelectField";
 
 // USE LAZY LOADING
-
-// import TeacherForm from "./forms/TeacherForm";
-// import StudentForm from "./forms/StudentForm";
 
 const TeacherForm = dynamic(() => import("./forms/TeacherForm"), {
   loading: () => <h1>Loading...</h1>,
@@ -15,12 +22,45 @@ const TeacherForm = dynamic(() => import("./forms/TeacherForm"), {
 const StudentForm = dynamic(() => import("./forms/StudentForm"), {
   loading: () => <h1>Loading...</h1>,
 });
+const SubjectForm = dynamic(() => import("./forms/SubjectForm"), {
+  loading: () => <h1>Loading...</h1>,
+});
+const ClassForm = dynamic(() => import("./forms/ClassForm"), {
+  loading: () => <h1>Loading...</h1>,
+});
+
+export type RelatedData = {
+  subjects?: SelectOption[];
+  teachers?: SelectOption[];
+  grades?: SelectOption[];
+  classes?: SelectOption[];
+  parents?: SelectOption[];
+};
+
+type FormRenderProps = {
+  type: "create" | "update";
+  data?: any;
+  relatedData?: RelatedData;
+  onSuccess: () => void;
+};
 
 const forms: {
-  [key: string]: (type: "create" | "update", data?: any) => React.JSX.Element;
+  [key: string]: (props: FormRenderProps) => React.JSX.Element;
 } = {
-  teacher: (type, data) => <TeacherForm type={type} data={data} />,
-  student: (type, data) => <StudentForm type={type} data={data} />
+  teacher: (props) => <TeacherForm {...props} />,
+  student: (props) => <StudentForm {...props} />,
+  subject: (props) => <SubjectForm {...props} />,
+  class: (props) => <ClassForm {...props} />,
+};
+
+/** Delete actions keyed by table; ids are numeric for everything but people. */
+const deleteActions: {
+  [key: string]: (id: any) => Promise<ActionState>;
+} = {
+  teacher: (id: string) => deleteTeacher(id),
+  student: (id: string) => deleteStudent(id),
+  subject: (id: number) => deleteSubject(Number(id)),
+  class: (id: number) => deleteClass(Number(id)),
 };
 
 const FormModal = ({
@@ -28,6 +68,7 @@ const FormModal = ({
   type,
   data,
   id,
+  relatedData,
 }: {
   table:
   | "teacher"
@@ -45,6 +86,7 @@ const FormModal = ({
   type: "create" | "update" | "delete";
   data?: any;
   id?: string | number;
+  relatedData?: RelatedData;
 }) => {
   const size = type === "create" ? "w-8 h-8" : "w-7 h-7";
   const bgColor =
@@ -79,27 +121,72 @@ const FormModal = ({
     return () => document.removeEventListener("keydown", handleEscape);
   }, [open]);
 
-  const Form = () => {
-    return type === "delete" && id ? (
-      <form action="" className="p-4 flex flex-col gap-4">
+  const DeleteForm = () => {
+    const router = useRouter();
+    const [isPending, startTransition] = useTransition();
+    const [error, setError] = useState<string | null>(null);
+    const action = deleteActions[table];
+
+    if (!action) {
+      return (
+        <div className="p-4 text-center text-gray-500">
+          Deleting a {table} is not supported yet.
+        </div>
+      );
+    }
+
+    const handleDelete = () => {
+      startTransition(async () => {
+        const result = await action(id);
+        if (result.success) {
+          toast.success(`${table.charAt(0).toUpperCase()}${table.slice(1)} deleted!`);
+          setOpen(false);
+          router.refresh();
+        } else {
+          setError(result.error);
+          if (result.error) toast.error(result.error);
+        }
+      });
+    };
+
+    return (
+      <div className="p-4 flex flex-col gap-4">
         <span className="text-center font-medium">
           All data will be lost. Are you sure you want to delete this {table}?
         </span>
-        <button className="bg-red-700 text-white py-2 px-4 rounded-md border-none w-max self-center">
-          Delete
+        {error && <p className="text-sm text-center text-red-500">{error}</p>}
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={isPending}
+          className="bg-red-700 text-white py-2 px-4 rounded-md border-none w-max self-center disabled:opacity-60"
+        >
+          {isPending ? "Deleting..." : "Delete"}
         </button>
-      </form>
-    ) : type === "create" || type === "update" ? (
-      forms[table] ? (
-        forms[table](type, data)
-      ) : (
+      </div>
+    );
+  };
+
+  const Form = () => {
+    if (type === "delete") {
+      return id ? <DeleteForm /> : <>Missing id!</>;
+    }
+
+    const render = forms[table];
+    if (!render) {
+      return (
         <div className="p-4 text-center text-gray-500">
           Form for {table} is not implemented yet.
         </div>
-      )
-    ) : (
-      "Form not found!"
-    );
+      );
+    }
+
+    return render({
+      type,
+      data,
+      relatedData,
+      onSuccess: () => setOpen(false),
+    });
   };
 
   return (

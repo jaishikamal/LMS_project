@@ -2,9 +2,9 @@ import FormModal from "@/components/FormModal";
 import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
-import { getRole } from "@/lib/auth";
 import { Prisma } from "@/lib/generated/prisma/client";
 import prisma from "@/lib/prisma";
+import { applyRoleCondition, getRoleScope } from "@/lib/roleScope";
 import { ITEM_PER_PAGE } from "@/lib/settings";
 import Image from "next/image";
 
@@ -20,7 +20,7 @@ type Result = {
   score: number;
 };
 
-const columns = [
+const baseColumns = [
   {
     header: "Subject Name",
     accessor: "name",
@@ -49,22 +49,43 @@ const columns = [
     accessor: "date",
     className: "hidden md:table-cell",
   },
-  {
-    header: "Actions",
-    accessor: "action",
-  },
 ];
+
+const actionColumn = {
+  header: "Actions",
+  accessor: "action",
+};
 
 const ResultListPage = async ({
   searchParams,
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
-  const role = await getRole();
+  const { role, userId, studentIds } = await getRoleScope();
   const { page: pageParam, ...queryParams } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
 
+  const columns =
+    role === "admin" || role === "teacher"
+      ? [...baseColumns, actionColumn]
+      : baseColumns;
+
   const query: Prisma.ResultWhereInput = {};
+
+  // Kept separate and AND-merged after the loop (rather than reusing
+  // `query.OR`, which the "teacherid"/"classid"/"search" params below
+  // already use) so it can't be overwritten by any of those params.
+  const roleCondition: Prisma.ResultWhereInput | null =
+    (role === "student" || role === "parent") && studentIds
+      ? { studentId: { in: studentIds } }
+      : role === "teacher" && userId
+        ? {
+          OR: [
+            { exam: { lesson: { teacherId: userId } } },
+            { assignment: { lesson: { teacherId: userId } } },
+          ],
+        }
+        : null;
 
   for (const [rawKey, value] of Object.entries(queryParams)) {
     if (!value) continue;
@@ -105,7 +126,12 @@ const ResultListPage = async ({
     }
   }
 
-  const [results, count] = await prisma.$transaction([
+  applyRoleCondition(query, roleCondition);
+
+  // Independent read-only queries: Promise.all avoids the interactive
+  // transaction timeout that $transaction([...]) would impose on a remote
+  // pooled connection.
+  const [results, count] = await Promise.all([
     prisma.result.findMany({
       where: query,
       include: {
@@ -175,16 +201,14 @@ const ResultListPage = async ({
       <td className="hidden md:table-cell">{item.teacher}</td>
       <td className="hidden md:table-cell">{item.class}</td>
       <td className="hidden md:table-cell">{item.date}</td>
-      <td>
-        <div className="flex items-center gap-2">
-          {(role === "admin" || role === "teacher") && (
-            <>
-              <FormModal table="result" type="update" data={item} />
-              <FormModal table="result" type="delete" id={item.id} />
-            </>
-          )}
-        </div>
-      </td>
+      {(role === "admin" || role === "teacher") && (
+        <td>
+          <div className="flex items-center gap-2">
+            <FormModal table="result" type="update" data={item} />
+            <FormModal table="result" type="delete" id={item.id} />
+          </div>
+        </td>
+      )}
     </tr>
   );
 

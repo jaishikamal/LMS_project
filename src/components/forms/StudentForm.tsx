@@ -1,54 +1,85 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
-import { z } from "zod";
+import { toast } from "react-toastify";
+import { saveStudent } from "@/lib/actions";
+import type { ActionState } from "@/lib/actionState";
+import { zodFormResolver } from "@/lib/formResolver";
+import {
+  studentSchema,
+  type StudentInput,
+  type StudentSchema,
+} from "@/lib/formSchemas";
+import ImageUploadField from "../ImageUploadField";
 import InputField from "../InputField";
-import Image from "next/image";
+import SelectField, { type SelectOption } from "../SelectField";
 
-const schema = z.object({
-  username: z
-    .string()
-    .min(3, { message: "Username must be at least 3 characters long!" })
-    .max(20, { message: "Username must be at most 20 characters long!" }),
-  email: z.string().email({ message: "Invalid email address!" }),
-  password: z
-    .string()
-    .min(8, { message: "Password must be at least 8 characters long!" }),
-  firstName: z.string().min(1, { message: "First name is required!" }),
-  lastName: z.string().min(1, { message: "Last name is required!" }),
-  phone: z.string().min(1, { message: "Phone is required!" }),
-  address: z.string().min(1, { message: "Address is required!" }),
-  bloodType: z.string().min(1, { message: "Blood Type is required!" }),
-  birthday: z.date({ message: "Birthday is required!" }),
-  sex: z.enum(["male", "female"], { message: "Sex is required!" }),
-  img: z.instanceof(File, { message: "Image is required" }),
-});
-
-type Inputs = z.infer<typeof schema>;
+/** Yields YYYY-MM-DD for a date input's defaultValue. */
+const toDateInput = (value: unknown) => {
+  if (!value) return undefined;
+  const date = new Date(value as string);
+  return Number.isNaN(date.getTime())
+    ? undefined
+    : date.toISOString().slice(0, 10);
+};
 
 const StudentForm = ({
   type,
   data,
+  relatedData,
+  onSuccess,
 }: {
   type: "create" | "update";
   data?: any;
+  relatedData?: {
+    grades?: SelectOption[];
+    classes?: SelectOption[];
+    parents?: SelectOption[];
+  };
+  onSuccess?: () => void;
 }) => {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [state, setState] = useState<ActionState>({
+    success: false,
+    error: null,
+  });
+
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
-  } = useForm<Inputs>({
-    resolver: zodResolver(schema),
+  } = useForm<StudentInput, unknown, StudentSchema>({
+    resolver: zodFormResolver(studentSchema),
+    defaultValues: { id: data?.id, img: data?.img ?? "" },
   });
 
-  const onSubmit = handleSubmit((data) => {
-    console.log(data);
+  const onSubmit = handleSubmit((values) => {
+    startTransition(async () => {
+      const result = await saveStudent(state, { ...values, id: data?.id });
+      setState(result);
+
+      if (result.success) {
+        toast.success(
+          type === "create" ? "Student created!" : "Student updated!"
+        );
+        router.refresh();
+        onSuccess?.();
+      } else if (result.error) {
+        toast.error(result.error);
+      }
+    });
   });
 
   return (
     <form className="flex flex-col gap-8" onSubmit={onSubmit}>
-      <h1 className="text-xl font-semibold">Create a new student</h1>
+      <h1 className="text-xl font-semibold">
+        {type === "create" ? "Create a new student" : "Update student"}
+      </h1>
+
       <span className="text-xs text-gray-400 font-medium">
         Authentication Information
       </span>
@@ -68,31 +99,32 @@ const StudentForm = ({
           error={errors?.email}
         />
         <InputField
-          label="Password"
+          label={type === "create" ? "Password" : "Password (leave blank to keep)"}
           name="password"
           type="password"
-          defaultValue={data?.password}
           register={register}
           error={errors?.password}
         />
       </div>
+
       <span className="text-xs text-gray-400 font-medium">
         Personal Information
       </span>
       <div className="flex justify-between flex-wrap gap-4">
         <InputField
           label="First Name"
-          name="firstName"
-          defaultValue={data?.firstName}
+          // List rows carry a joined display name, so prefer the raw first name.
+          name="name"
+          defaultValue={data?.firstName ?? data?.name}
           register={register}
-          error={errors.firstName}
+          error={errors.name}
         />
         <InputField
           label="Last Name"
-          name="lastName"
-          defaultValue={data?.lastName}
+          name="surname"
+          defaultValue={data?.surname}
           register={register}
-          error={errors.lastName}
+          error={errors.surname}
         />
         <InputField
           label="Phone"
@@ -118,45 +150,71 @@ const StudentForm = ({
         <InputField
           label="Birthday"
           name="birthday"
-          defaultValue={data?.birthday}
+          type="date"
+          defaultValue={toDateInput(data?.birthday)}
           register={register}
           error={errors.birthday}
-          type="date"
         />
-        <div className="flex flex-col gap-2 w-full md:w-1/4">
-          <label className="text-xs text-gray-500">Sex</label>
-          <select
-            className="ring-[1.5px] ring-gray-300 p-2 rounded-md text-sm w-full"
-            {...register("sex")}
-            defaultValue={data?.sex}
-          >
-            <option value="male">Male</option>
-            <option value="female">Female</option>
-          </select>
-          {errors.sex?.message && (
-            <p className="text-xs text-red-400">
-              {errors.sex.message.toString()}
-            </p>
-          )}
-        </div>
-        <div className="flex flex-col gap-2 w-full md:w-1/4 justify-center">
-          <label
-            className="text-xs text-gray-500 flex items-center gap-2 cursor-pointer"
-            htmlFor="img"
-          >
-            <Image src="/upload.png" alt="" width={28} height={28} />
-            <span>Upload a photo</span>
-          </label>
-          <input type="file" id="img" {...register("img")} className="hidden" />
-          {errors.img?.message && (
-            <p className="text-xs text-red-400">
-              {errors.img.message.toString()}
-            </p>
-          )}
-        </div>
+        <SelectField
+          label="Sex"
+          name="sex"
+          register={register}
+          defaultValue={data?.sex}
+          error={errors.sex}
+          options={[
+            { value: "MALE", label: "Male" },
+            { value: "FEMALE", label: "Female" },
+          ]}
+        />
+        {relatedData?.grades && (
+          <SelectField
+            label="Grade"
+            name="gradeId"
+            register={register}
+            options={relatedData.grades}
+            defaultValue={data?.gradeId}
+            error={errors.gradeId}
+            placeholder="Select a grade"
+          />
+        )}
+        {relatedData?.classes && (
+          <SelectField
+            label="Class"
+            name="classId"
+            register={register}
+            options={relatedData.classes}
+            defaultValue={data?.classId}
+            error={errors.classId}
+            placeholder="Select a class"
+          />
+        )}
+        {relatedData?.parents && (
+          <SelectField
+            label="Parent"
+            name="parentId"
+            register={register}
+            options={relatedData.parents}
+            defaultValue={data?.parentId}
+            error={errors.parentId}
+            placeholder="Select a parent"
+          />
+        )}
+        {/* The widget writes the Cloudinary URL straight into the `img` field. */}
+        <input type="hidden" {...register("img")} />
+        <ImageUploadField
+          defaultValue={data?.img}
+          onChange={(url) => setValue("img", url, { shouldValidate: true })}
+        />
       </div>
-      <button className="bg-blue-400 text-white p-2 rounded-md">
-        {type === "create" ? "Create" : "Update"}
+
+      {state.error && <p className="text-sm text-red-500">{state.error}</p>}
+
+      <button
+        type="submit"
+        disabled={isPending}
+        className="bg-blue-400 text-white p-2 rounded-md disabled:opacity-60"
+      >
+        {isPending ? "Saving..." : type === "create" ? "Create" : "Update"}
       </button>
     </form>
   );

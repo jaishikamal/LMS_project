@@ -1,4 +1,9 @@
-import { FieldError } from "react-hook-form";
+/**
+ * react-hook-form reports coerced/array fields with nested merged error shapes
+ * rather than a plain `FieldError`. This component only renders `message`, so
+ * accept anything that carries one instead of mirroring RHF's full union.
+ */
+type AnyFieldError = { message?: unknown } | undefined;
 
 type InputFieldProps = {
   label: string;
@@ -6,7 +11,7 @@ type InputFieldProps = {
   register: any;
   name: string;
   defaultValue?: string;
-  error?: FieldError;
+  error?: AnyFieldError;
   inputProps?: React.InputHTMLAttributes<HTMLInputElement>;
 };
 
@@ -29,9 +34,9 @@ const InputField = ({
         {...inputProps}
         defaultValue={defaultValue}
       />
-      {error?.message && (
-        <p className="text-xs text-red-400">{error.message.toString()}</p>
-      )}
+      {error?.message ? (
+        <p className="text-xs text-red-400">{String(error.message)}</p>
+      ) : null}
     </div>
   );
 };

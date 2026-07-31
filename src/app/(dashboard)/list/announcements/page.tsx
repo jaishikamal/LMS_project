@@ -2,9 +2,9 @@ import FormModal from "@/components/FormModal";
 import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
-import { getRole } from "@/lib/auth";
 import { Prisma } from "@/lib/generated/prisma/client";
 import prisma from "@/lib/prisma";
+import { applyRoleCondition, getRoleScope } from "@/lib/roleScope";
 import { ITEM_PER_PAGE } from "@/lib/settings";
 import Image from "next/image";
 
@@ -15,7 +15,7 @@ type Announcement = {
   date: string;
 };
 
-const columns = [
+const baseColumns = [
   {
     header: "Title",
     accessor: "title",
@@ -29,11 +29,12 @@ const columns = [
     accessor: "date",
     className: "hidden md:table-cell",
   },
-  {
-    header: "Actions",
-    accessor: "action",
-  },
 ];
+
+const actionColumn = {
+  header: "Actions",
+  accessor: "action",
+};
 
 const dateFormat = new Intl.DateTimeFormat("en-US");
 
@@ -42,11 +43,23 @@ const AnnouncementListPage = async ({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
-  const role = await getRole();
+  const { role, classIds } = await getRoleScope();
   const { page: pageParam, ...queryParams } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
 
+  const columns = role === "admin" ? [...baseColumns, actionColumn] : baseColumns;
+
   const query: Prisma.AnnouncementWhereInput = {};
+
+  // Non-admins only see school-wide announcements plus ones targeted at
+  // their own (or their children's) class(es). Kept separate and
+  // AND-merged after the loop (rather than reusing `query.OR`, which the
+  // "studentid"/"search" params below already use) so it can't be
+  // overwritten by any of those params.
+  const roleCondition: Prisma.AnnouncementWhereInput | null =
+    role !== "admin" && classIds
+      ? { OR: [{ classId: null }, { classId: { in: classIds } }] }
+      : null;
 
   for (const [rawKey, value] of Object.entries(queryParams)) {
     if (!value) continue;
@@ -79,7 +92,12 @@ const AnnouncementListPage = async ({
     }
   }
 
-  const [announcements, count] = await prisma.$transaction([
+  applyRoleCondition(query, roleCondition);
+
+  // Independent read-only queries: Promise.all avoids the interactive
+  // transaction timeout that $transaction([...]) would impose on a remote
+  // pooled connection.
+  const [announcements, count] = await Promise.all([
     prisma.announcement.findMany({
       where: query,
       include: {
@@ -109,16 +127,14 @@ const AnnouncementListPage = async ({
       <td className="flex items-center gap-4 p-4">{item.title}</td>
       <td>{item.class}</td>
       <td className="hidden md:table-cell">{item.date}</td>
-      <td>
-        <div className="flex items-center gap-2">
-          {role === "admin" && (
-            <>
-              <FormModal table="announcement" type="update" data={item} />
-              <FormModal table="announcement" type="delete" id={item.id} />
-            </>
-          )}
-        </div>
-      </td>
+      {role === "admin" && (
+        <td>
+          <div className="flex items-center gap-2">
+            <FormModal table="announcement" type="update" data={item} />
+            <FormModal table="announcement" type="delete" id={item.id} />
+          </div>
+        </td>
+      )}
     </tr>
   );
 

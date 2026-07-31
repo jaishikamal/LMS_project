@@ -2,9 +2,9 @@ import FormModal from "@/components/FormModal";
 import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
-import { getRole } from "@/lib/auth";
 import { Prisma } from "@/lib/generated/prisma/client";
 import prisma from "@/lib/prisma";
+import { applyRoleCondition, getRoleScope } from "@/lib/roleScope";
 import { ITEM_PER_PAGE } from "@/lib/settings";
 import Image from "next/image";
 
@@ -15,7 +15,7 @@ type Lesson = {
   teacher: string;
 };
 
-const columns = [
+const baseColumns = [
   {
     header: "Subject Name",
     accessor: "name",
@@ -29,22 +29,34 @@ const columns = [
     accessor: "teacher",
     className: "hidden md:table-cell",
   },
-  {
-    header: "Actions",
-    accessor: "action",
-  },
 ];
+
+const actionColumn = {
+  header: "Actions",
+  accessor: "action",
+};
 
 const LessonListPage = async ({
   searchParams,
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
-  const role = await getRole();
+  const { role, userId, classIds } = await getRoleScope();
   const { page: pageParam, ...queryParams } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
 
+  const columns = role === "admin" ? [...baseColumns, actionColumn] : baseColumns;
+
   const query: Prisma.LessonWhereInput = {};
+
+  // Kept separate and AND-merged after the loop so a `teacherId`/`classId`
+  // query param can't override the role-based scoping.
+  const roleCondition: Prisma.LessonWhereInput | null =
+    role === "teacher" && userId
+      ? { teacherId: userId }
+      : (role === "student" || role === "parent") && classIds
+        ? { classId: { in: classIds } }
+        : null;
 
   for (const [rawKey, value] of Object.entries(queryParams)) {
     if (!value) continue;
@@ -88,7 +100,12 @@ const LessonListPage = async ({
     }
   }
 
-  const [lessons, count] = await prisma.$transaction([
+  applyRoleCondition(query, roleCondition);
+
+  // Independent read-only queries: Promise.all avoids the interactive
+  // transaction timeout that $transaction([...]) would impose on a remote
+  // pooled connection.
+  const [lessons, count] = await Promise.all([
     prisma.lesson.findMany({
       where: query,
       include: {
@@ -118,16 +135,14 @@ const LessonListPage = async ({
       <td className="flex items-center gap-4 p-4">{item.subject}</td>
       <td>{item.class}</td>
       <td className="hidden md:table-cell">{item.teacher}</td>
-      <td>
-        <div className="flex items-center gap-2">
-          {role === "admin" && (
-            <>
-              <FormModal table="lesson" type="update" data={item} />
-              <FormModal table="lesson" type="delete" id={item.id} />
-            </>
-          )}
-        </div>
-      </td>
+      {role === "admin" && (
+        <td>
+          <div className="flex items-center gap-2">
+            <FormModal table="lesson" type="update" data={item} />
+            <FormModal table="lesson" type="delete" id={item.id} />
+          </div>
+        </td>
+      )}
     </tr>
   );
 

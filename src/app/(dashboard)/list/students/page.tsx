@@ -2,9 +2,9 @@ import FormModal from "@/components/FormModal";
 import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
-import { getRole } from "@/lib/auth";
-import { Prisma } from "@/lib/generated/prisma/client";
+import { Prisma, UserSex } from "@/lib/generated/prisma/client";
 import prisma from "@/lib/prisma";
+import { applyRoleCondition, getRoleScope } from "@/lib/roleScope";
 import { ITEM_PER_PAGE } from "@/lib/settings";
 import Image from "next/image";
 import Link from "next/link";
@@ -19,9 +19,20 @@ type Student = {
   grade: number;
   class: string;
   address: string;
+  // Raw values for the update form (see the mapping below).
+  username: string;
+  firstName: string;
+  surname: string;
+  bloodType: string;
+  sex: UserSex;
+  birthday: Date;
+  img: string | null;
+  gradeId: number;
+  classId: number;
+  parentId: string;
 };
 
-const columns = [
+const baseColumns = [
   {
     header: "Info",
     accessor: "info",
@@ -46,22 +57,36 @@ const columns = [
     accessor: "address",
     className: "hidden lg:table-cell",
   },
-  {
-    header: "Actions",
-    accessor: "action",
-  },
 ];
+
+const actionColumn = {
+  header: "Actions",
+  accessor: "action",
+};
 
 const StudentListPage = async ({
   searchParams,
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
-  const role = await getRole();
+  const { role, classIds, studentIds } = await getRoleScope();
   const { page: pageParam, ...queryParams } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
 
+  const columns = role === "student" ? baseColumns : [...baseColumns, actionColumn];
+
   const query: Prisma.StudentWhereInput = {};
+
+  // Teachers see students in their own classes; students see only
+  // themselves; parents see only their own children. Kept separate and
+  // AND-merged after the loop so a `classId`/`studentId` query param can't
+  // override it.
+  const roleCondition: Prisma.StudentWhereInput | null =
+    role === "teacher" && classIds
+      ? { classId: { in: classIds } }
+      : (role === "student" || role === "parent") && studentIds
+        ? { id: { in: studentIds } }
+        : null;
 
   for (const [rawKey, value] of Object.entries(queryParams)) {
     if (!value) continue;
@@ -109,7 +134,14 @@ const StudentListPage = async ({
     }
   }
 
-  const [students, count] = await prisma.$transaction([
+  applyRoleCondition(query, roleCondition);
+
+  // Independent read-only queries: Promise.all avoids the interactive
+  // transaction timeout that $transaction([...]) would impose on a remote
+  // pooled connection.
+  const isAdmin = role === "admin";
+
+  const [students, count, allGrades, allClasses, allParents] = await Promise.all([
     prisma.student.findMany({
       where: query,
       include: {
@@ -121,7 +153,35 @@ const StudentListPage = async ({
       skip: ITEM_PER_PAGE * (page - 1),
     }),
     prisma.student.count({ where: query }),
+    // Options for the form's grade/class/parent selects.
+    isAdmin
+      ? prisma.grade.findMany({ select: { id: true, level: true }, orderBy: { level: "asc" } })
+      : Promise.resolve([]),
+    isAdmin
+      ? prisma.class.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } })
+      : Promise.resolve([]),
+    isAdmin
+      ? prisma.parent.findMany({
+        select: { id: true, name: true, surname: true },
+        orderBy: { name: "asc" },
+      })
+      : Promise.resolve([]),
   ]);
+
+  const relatedData = {
+    grades: allGrades.map((grade) => ({
+      value: grade.id,
+      label: `Grade ${grade.level}`,
+    })),
+    classes: allClasses.map((classItem) => ({
+      value: classItem.id,
+      label: classItem.name,
+    })),
+    parents: allParents.map((parent) => ({
+      value: parent.id,
+      label: `${parent.name} ${parent.surname}`,
+    })),
+  };
 
   const studentsData: Student[] = students.map((student) => ({
     id: student.id,
@@ -133,6 +193,19 @@ const StudentListPage = async ({
     grade: student.grade.level,
     class: student.class.name,
     address: student.address,
+    // Raw fields the update form needs (display values above are joined).
+    username: student.username,
+    firstName: student.name,
+    surname: student.surname,
+    bloodType: student.bloodType,
+    sex: student.sex,
+    birthday: student.birthday,
+    // Raw column (not the avatar-fallback `photo` above) so the update form
+    // can preview the existing upload and keep it on save.
+    img: student.img,
+    gradeId: student.gradeId,
+    classId: student.classId,
+    parentId: student.parentId,
   }));
 
   const renderRow = (item: Student) => (
@@ -157,18 +230,28 @@ const StudentListPage = async ({
       <td className="hidden md:table-cell">{item.grade}</td>
       <td className="hidden md:table-cell">{item.phone}</td>
       <td className="hidden md:table-cell">{item.address}</td>
-      <td>
-        <div className="flex items-center gap-2">
-          <Link href={`/list/students/${item.id}`}>
-            <button className="w-7 h-7 flex items-center justify-center rounded-full bg-kamal-sky">
-              <Image src="/view.png" alt="" width={16} height={16} />
-            </button>
-          </Link>
-          {role === "admin" && (
-            <FormModal table="student" type="delete" id={item.id} />
-          )}
-        </div>
-      </td>
+      {role !== "student" && (
+        <td>
+          <div className="flex items-center gap-2">
+            <Link href={`/list/students/${item.id}`}>
+              <button className="w-7 h-7 flex items-center justify-center rounded-full bg-kamal-sky">
+                <Image src="/view.png" alt="" width={16} height={16} />
+              </button>
+            </Link>
+            {role === "admin" && (
+              <>
+                <FormModal
+                  table="student"
+                  type="update"
+                  data={item}
+                  relatedData={relatedData}
+                />
+                <FormModal table="student" type="delete" id={item.id} />
+              </>
+            )}
+          </div>
+        </td>
+      )}
     </tr>
   );
 
@@ -187,7 +270,11 @@ const StudentListPage = async ({
               <Image src="/sort.png" alt="" width={14} height={14} />
             </button>
             {role === "admin" && (
-              <FormModal table="student" type="create" />
+              <FormModal
+                table="student"
+                type="create"
+                relatedData={relatedData}
+              />
             )}
           </div>
         </div>

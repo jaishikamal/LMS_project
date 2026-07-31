@@ -2,9 +2,9 @@ import FormModal from "@/components/FormModal";
 import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
-import { getRole } from "@/lib/auth";
 import { Prisma } from "@/lib/generated/prisma/client";
 import prisma from "@/lib/prisma";
+import { applyRoleCondition, getRoleScope } from "@/lib/roleScope";
 import { ITEM_PER_PAGE } from "@/lib/settings";
 import Image from "next/image";
 
@@ -16,7 +16,7 @@ type Exam = {
   date: string;
 };
 
-const columns = [
+const baseColumns = [
   {
     header: "Subject Name",
     accessor: "name",
@@ -35,25 +35,40 @@ const columns = [
     accessor: "date",
     className: "hidden md:table-cell",
   },
-  {
-    header: "Actions",
-    accessor: "action",
-  },
 ];
+
+const actionColumn = {
+  header: "Actions",
+  accessor: "action",
+};
 
 const ExamListPage = async ({
   searchParams,
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
-  const role = await getRole();
+  const { role, userId, classIds } = await getRoleScope();
   const { page: pageParam, ...queryParams } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
+
+  const columns =
+    role === "admin" || role === "teacher"
+      ? [...baseColumns, actionColumn]
+      : baseColumns;
 
   const query: Prisma.ExamWhereInput = {};
   // Exam has no direct class/teacher/subject columns, so all of these
   // filters go through the related lesson.
   const lessonFilter: Prisma.LessonWhereInput = {};
+
+  // Kept separate and AND-merged after the loop so a `teacherId`/`classId`
+  // query param can't override the role-based scoping.
+  const roleCondition: Prisma.LessonWhereInput | null =
+    role === "teacher" && userId
+      ? { teacherId: userId }
+      : (role === "student" || role === "parent") && classIds
+        ? { classId: { in: classIds } }
+        : null;
 
   for (const [rawKey, value] of Object.entries(queryParams)) {
     if (!value) continue;
@@ -97,11 +112,16 @@ const ExamListPage = async ({
     }
   }
 
+  applyRoleCondition(lessonFilter, roleCondition);
+
   if (Object.keys(lessonFilter).length > 0) {
     query.lesson = lessonFilter;
   }
 
-  const [exams, count] = await prisma.$transaction([
+  // Independent read-only queries: Promise.all avoids the interactive
+  // transaction timeout that $transaction([...]) would impose on a remote
+  // pooled connection.
+  const [exams, count] = await Promise.all([
     prisma.exam.findMany({
       where: query,
       include: {
@@ -138,16 +158,14 @@ const ExamListPage = async ({
       <td>{item.class}</td>
       <td className="hidden md:table-cell">{item.teacher}</td>
       <td className="hidden md:table-cell">{item.date}</td>
-      <td>
-        <div className="flex items-center gap-2">
-          {(role === "admin" || role === "teacher") && (
-            <>
-              <FormModal table="exam" type="update" data={item} />
-              <FormModal table="exam" type="delete" id={item.id} />
-            </>
-          )}
-        </div>
-      </td>
+      {(role === "admin" || role === "teacher") && (
+        <td>
+          <div className="flex items-center gap-2">
+            <FormModal table="exam" type="update" data={item} />
+            <FormModal table="exam" type="delete" id={item.id} />
+          </div>
+        </td>
+      )}
     </tr>
   );
 

@@ -2,9 +2,9 @@ import FormModal from "@/components/FormModal";
 import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
-import { getRole } from "@/lib/auth";
 import { Prisma } from "@/lib/generated/prisma/client";
 import prisma from "@/lib/prisma";
+import { applyRoleCondition, getRoleScope } from "@/lib/roleScope";
 import { ITEM_PER_PAGE } from "@/lib/settings";
 import Image from "next/image";
 
@@ -12,9 +12,11 @@ type Subject = {
   id: number;
   name: string;
   teachers: string[];
+  // Ids feed the update form's multi-select; the names above are for display.
+  teacherIds: string[];
 };
 
-const columns = [
+const baseColumns = [
   {
     header: "Subject Name",
     accessor: "name",
@@ -24,22 +26,34 @@ const columns = [
     accessor: "teachers",
     className: "hidden md:table-cell",
   },
-  {
-    header: "Actions",
-    accessor: "action",
-  },
 ];
+
+const actionColumn = {
+  header: "Actions",
+  accessor: "action",
+};
 
 const SubjectListPage = async ({
   searchParams,
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
-  const role = await getRole();
+  const { role, userId, classIds } = await getRoleScope();
   const { page: pageParam, ...queryParams } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
 
+  const columns = role === "admin" ? [...baseColumns, actionColumn] : baseColumns;
+
   const query: Prisma.SubjectWhereInput = {};
+
+  // Kept separate and AND-merged after the loop so a `teacherId` query
+  // param can't override the teacher's own scoping.
+  const roleCondition: Prisma.SubjectWhereInput | null =
+    role === "teacher" && userId
+      ? { teachers: { some: { id: userId } } }
+      : (role === "student" || role === "parent") && classIds
+        ? { lessons: { some: { classId: { in: classIds } } } }
+        : null;
 
   for (const [rawKey, value] of Object.entries(queryParams)) {
     if (!value) continue;
@@ -60,7 +74,12 @@ const SubjectListPage = async ({
     }
   }
 
-  const [subjects, count] = await prisma.$transaction([
+  applyRoleCondition(query, roleCondition);
+
+  // Independent read-only queries: Promise.all avoids the interactive
+  // transaction timeout that $transaction([...]) would impose on a remote
+  // pooled connection.
+  const [subjects, count, allTeachers] = await Promise.all([
     prisma.subject.findMany({
       where: query,
       include: {
@@ -71,7 +90,21 @@ const SubjectListPage = async ({
       skip: ITEM_PER_PAGE * (page - 1),
     }),
     prisma.subject.count({ where: query }),
+    // Options for the form's teacher multi-select.
+    role === "admin"
+      ? prisma.teacher.findMany({
+        select: { id: true, name: true, surname: true },
+        orderBy: { name: "asc" },
+      })
+      : Promise.resolve([]),
   ]);
+
+  const relatedData = {
+    teachers: allTeachers.map((teacher) => ({
+      value: teacher.id,
+      label: `${teacher.name} ${teacher.surname}`,
+    })),
+  };
 
   const subjectsData: Subject[] = subjects.map((subject) => ({
     id: subject.id,
@@ -79,6 +112,7 @@ const SubjectListPage = async ({
     teachers: subject.teachers.map(
       (teacher) => `${teacher.name} ${teacher.surname}`
     ),
+    teacherIds: subject.teachers.map((teacher) => teacher.id),
   }));
 
   const renderRow = (item: Subject) => (
@@ -88,16 +122,19 @@ const SubjectListPage = async ({
     >
       <td className="flex items-center gap-4 p-4">{item.name}</td>
       <td className="hidden md:table-cell">{item.teachers.join(",")}</td>
-      <td>
-        <div className="flex items-center gap-2">
-          {role === "admin" && (
-            <>
-              <FormModal table="subject" type="update" data={item} />
-              <FormModal table="subject" type="delete" id={item.id} />
-            </>
-          )}
-        </div>
-      </td>
+      {role === "admin" && (
+        <td>
+          <div className="flex items-center gap-2">
+            <FormModal
+              table="subject"
+              type="update"
+              data={item}
+              relatedData={relatedData}
+            />
+            <FormModal table="subject" type="delete" id={item.id} />
+          </div>
+        </td>
+      )}
     </tr>
   );
 
@@ -115,7 +152,13 @@ const SubjectListPage = async ({
             <button className="w-8 h-8 flex items-center justify-center rounded-full bg-kamal-yellow">
               <Image src="/sort.png" alt="" width={14} height={14} />
             </button>
-            {role === "admin" && <FormModal table="subject" type="create" />}
+            {role === "admin" && (
+              <FormModal
+                table="subject"
+                type="create"
+                relatedData={relatedData}
+              />
+            )}
           </div>
         </div>
       </div>

@@ -113,17 +113,23 @@ async function main() {
   }
 
   // LESSON
+  // Only the time-of-day part of startTime/endTime is meaningful (the weekday
+  // lives in `day`), so give each lesson a fixed 45-minute period inside
+  // school hours. Using "now + N hours" here would push lessons outside the
+  // calendar's visible 8:00-17:00 range depending on when the seed ran.
+  const lessonDays = Object.keys(Day) as (keyof typeof Day)[];
   for (let i = 1; i <= 30; i++) {
+    // Periods at 08:00, 09:00, ... 14:00, then wrap around.
+    const periodHour = 8 + (i % 7);
+    const startTime = new Date(2026, 0, 1, periodHour, 0, 0, 0);
+    const endTime = new Date(2026, 0, 1, periodHour, 45, 0, 0);
+
     await prisma.lesson.create({
       data: {
         name: `Lesson${i}`,
-        day: Day[
-          Object.keys(Day)[
-          Math.floor(Math.random() * Object.keys(Day).length)
-          ] as keyof typeof Day
-        ],
-        startTime: new Date(new Date().setHours(new Date().getHours() + 1)),
-        endTime: new Date(new Date().setHours(new Date().getHours() + 3)),
+        day: Day[lessonDays[i % lessonDays.length]],
+        startTime,
+        endTime,
         subjectId: (i % 10) + 1,
         classId: (i % 6) + 1,
         teacherId: `teacher${(i % 15) + 1}`,
@@ -227,13 +233,21 @@ async function main() {
   }
 
   // EVENT
+  // Spread across the coming days so the dashboard's "upcoming events" panel
+  // keeps showing data instead of going stale an hour after seeding.
   for (let i = 1; i <= 5; i++) {
+    const start = new Date();
+    start.setDate(start.getDate() + i);
+    start.setHours(10, 0, 0, 0);
+    const end = new Date(start);
+    end.setHours(start.getHours() + 2);
+
     await prisma.event.create({
       data: {
         title: `Event ${i}`,
         description: `Description for Event ${i}`,
-        startTime: new Date(new Date().setHours(new Date().getHours() + 1)),
-        endTime: new Date(new Date().setHours(new Date().getHours() + 2)),
+        startTime: start,
+        endTime: end,
         classId: (i % 5) + 1,
       },
     });
