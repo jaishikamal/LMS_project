@@ -1,21 +1,50 @@
+import bcrypt from "bcryptjs";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Day, PrismaClient, UserSex } from "../src/lib/generated/prisma/client";
 
 const adapter = new PrismaPg({ connectionString: process.env.DIRECT_URL });
 const prisma = new PrismaClient({ adapter });
 
+// Demo-only: every seeded account's password matches its username.
+const hashPassword = (plain: string) => bcrypt.hash(plain, 10);
+
+// Nepali names used for demo seed data.
+const maleFirstNames = [
+  "Ram", "Shyam", "Hari", "Krishna", "Bikash",
+  "Sandeep", "Suresh", "Dipesh", "Anil", "Prakash",
+  "Rajesh", "Nabin", "Sagar", "Bibek", "Rohan",
+];
+const femaleFirstNames = [
+  "Sita", "Gita", "Radha", "Puja", "Anita",
+  "Sunita", "Kabita", "Manisha", "Sarita", "Nisha",
+  "Priya", "Kritika", "Sabina", "Rekha", "Laxmi",
+];
+const surnames = [
+  "Sharma", "Shrestha", "Gurung", "Tamang", "Rai",
+  "Limbu", "Thapa", "Basnet", "Karki", "Adhikari",
+  "Poudel", "Bhattarai", "Khadka", "Magar", "Chhetri",
+  "Yadav", "Maharjan", "Pandey", "Joshi", "Bista",
+];
+const nepaliCities = [
+  "Kathmandu", "Pokhara", "Lalitpur", "Bhaktapur", "Biratnagar",
+  "Birgunj", "Dharan", "Butwal", "Hetauda", "Nepalgunj",
+  "Itahari", "Dhangadhi", "Janakpur", "Bharatpur", "Damak",
+];
+
 async function main() {
   // ADMIN
   await prisma.admin.create({
     data: {
-      id: "admin1", 
+      id: "admin1",
       username: "admin1",
+      password: await hashPassword("admin1"),
     },
   });
   await prisma.admin.create({
     data: {
       id: "admin2",
       username: "admin2",
+      password: await hashPassword("admin2"),
     },
   });
 
@@ -59,17 +88,23 @@ async function main() {
 
   // TEACHER
   for (let i = 1; i <= 15; i++) {
+    const isMale = i % 2 === 0;
+    const firstName = isMale
+      ? maleFirstNames[(i - 1) % maleFirstNames.length]
+      : femaleFirstNames[(i - 1) % femaleFirstNames.length];
+    const surname = surnames[(i - 1) % surnames.length];
     await prisma.teacher.create({
       data: {
         id: `teacher${i}`, // Unique ID for the teacher
         username: `teacher${i}`,
-        name: `TName${i}`,
-        surname: `TSurname${i}`,
+        password: await hashPassword(`teacher${i}`),
+        name: firstName,
+        surname,
         email: `teacher${i}@example.com`,
         phone: `123-456-789${i}`,
-        address: `Address${i}`,
+        address: nepaliCities[(i - 1) % nepaliCities.length],
         bloodType: "A+",
-        sex: i % 2 === 0 ? UserSex.MALE : UserSex.FEMALE,
+        sex: isMale ? UserSex.MALE : UserSex.FEMALE,
         subjects: { connect: [{ id: (i % 10) + 1 }] },
         classes: { connect: [{ id: (i % 6) + 1 }] },
         birthday: new Date(new Date().setFullYear(new Date().getFullYear() - 30)),
@@ -98,32 +133,44 @@ async function main() {
 
   // PARENT
   for (let i = 1; i <= 25; i++) {
+    const isMale = i % 2 === 0;
+    const firstName = isMale
+      ? maleFirstNames[(i - 1) % maleFirstNames.length]
+      : femaleFirstNames[(i - 1) % femaleFirstNames.length];
+    const surname = surnames[(i - 1) % surnames.length];
     await prisma.parent.create({
       data: {
         id: `parentId${i}`,
         username: `parentId${i}`,
-        name: `PName ${i}`,
-        surname: `PSurname ${i}`,
+        password: await hashPassword(`parentId${i}`),
+        name: firstName,
+        surname,
         email: `parent${i}@example.com`,
         phone: `123-456-789${i}`,
-        address: `Address${i}`,
+        address: nepaliCities[(i - 1) % nepaliCities.length],
       },
     });
   }
 
   // STUDENT
   for (let i = 1; i <= 50; i++) {
+    const isMale = i % 2 === 0;
+    const firstName = isMale
+      ? maleFirstNames[(i - 1) % maleFirstNames.length]
+      : femaleFirstNames[(i - 1) % femaleFirstNames.length];
+    const surname = surnames[(i - 1) % surnames.length];
     await prisma.student.create({
       data: {
         id: `student${i}`,
         username: `student${i}`,
-        name: `SName${i}`,
-        surname: `SSurname ${i}`,
+        password: await hashPassword(`student${i}`),
+        name: firstName,
+        surname,
         email: `student${i}@example.com`,
         phone: `987-654-321${i}`,
-        address: `Address${i}`,
+        address: nepaliCities[(i - 1) % nepaliCities.length],
         bloodType: "O-",
-        sex: i % 2 === 0 ? UserSex.MALE : UserSex.FEMALE,
+        sex: isMale ? UserSex.MALE : UserSex.FEMALE,
         parentId: `parentId${Math.ceil(i / 2) % 25 || 25}`,
         gradeId: (i % 6) + 1,
         classId: (i % 6) + 1,

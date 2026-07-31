@@ -1,38 +1,28 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { isRole, roleHomeRoute, type Role } from "./roles";
 
 /**
- * The signed-in Clerk user, fetched at most once per request.
- * `currentUser()` calls Clerk's API, so it is wrapped in `cache()` to dedupe
- * the calls made by the layout, the navbar and the page in a single render.
- */
-export const getClerkUser = cache(async () => currentUser());
-
-/**
- * Reads the current user's id and role on the server.
+ * Reads the current user's id, name and role from the NextAuth session.
+ * Wrapped in `cache()` so the layout, navbar and page share one call per
+ * request instead of re-decoding the session token multiple times.
  *
- * The role lives on the Clerk user's `publicMetadata`. It is read straight from
- * the session token when the instance forwards it (Clerk Dashboard -> Sessions
- * -> Customize session token -> `{ "metadata": "{{user.public_metadata}}" }`),
- * which needs no network call. When that claim isn't configured we fall back to
- * fetching the user, so roles work either way.
- *
- * Returns `role: null` when the user is signed out or has no role assigned.
+ * Returns `role: null` when the user is signed out or has no role on the
+ * session (shouldn't happen for accounts created through the seed/DB, since
+ * every account row belongs to exactly one role table).
  */
 export const getCurrentUser = cache(async () => {
-  const { userId, sessionClaims } = await auth();
+  const session = await auth();
+  const user = session?.user;
 
-  if (!userId) return { userId: null, role: null };
+  if (!user?.id) return { userId: null, name: null, role: null };
 
-  const claimedRole = sessionClaims?.metadata?.role;
-  if (isRole(claimedRole)) return { userId, role: claimedRole };
-
-  const user = await getClerkUser();
-  const metadataRole = user?.publicMetadata?.role;
-
-  return { userId, role: isRole(metadataRole) ? metadataRole : null };
+  return {
+    userId: user.id,
+    name: user.name ?? null,
+    role: isRole(user.role) ? user.role : null,
+  };
 });
 
 /** Same as `getCurrentUser`, but only returns the role. */

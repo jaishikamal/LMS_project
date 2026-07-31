@@ -1,18 +1,21 @@
-export { };
+import type { Role } from "@/lib/roles";
 
-/**
- * The roles supported by the LMS. Stored on the Clerk user's `publicMetadata`
- * and forwarded into the session token through the "Customize session token"
- * claims in the Clerk Dashboard:
- *
- * { "metadata": "{{user.public_metadata}}" }
- */
-export type Role = "admin" | "teacher" | "student" | "parent";
-
-declare global {
-  interface CustomJwtSessionClaims {
-    metadata: {
+declare module "next-auth" {
+  interface Session {
+    user: {
+      id: string;
+      name?: string | null;
       role?: Role;
     };
+  }
+
+  interface User {
+    role?: Role;
+  }
+}
+
+declare module "next-auth/jwt" {
+  interface JWT {
+    role?: Role;
   }
 }

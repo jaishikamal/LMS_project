@@ -1,5 +1,5 @@
 // TEMPORARY DATA
-// The role now comes from Clerk (see src/lib/auth.ts), not from this file.
+// The role now comes from the NextAuth session (see src/lib/auth.ts), not from this file.
 
 export const teachersData = [
   {

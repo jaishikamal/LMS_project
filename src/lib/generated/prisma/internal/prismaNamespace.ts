@@ -1507,7 +1507,8 @@ export type TransactionIsolationLevel = (typeof TransactionIsolationLevel)[keyof
 
 export const AdminScalarFieldEnum = {
   id: 'id',
-  username: 'username'
+  username: 'username',
+  password: 'password'
 } as const
 
 export type AdminScalarFieldEnum = (typeof AdminScalarFieldEnum)[keyof typeof AdminScalarFieldEnum]
@@ -1516,6 +1517,7 @@ export type AdminScalarFieldEnum = (typeof AdminScalarFieldEnum)[keyof typeof Ad
 export const StudentScalarFieldEnum = {
   id: 'id',
   username: 'username',
+  password: 'password',
   name: 'name',
   surname: 'surname',
   email: 'email',
@@ -1537,6 +1539,7 @@ export type StudentScalarFieldEnum = (typeof StudentScalarFieldEnum)[keyof typeo
 export const TeacherScalarFieldEnum = {
   id: 'id',
   username: 'username',
+  password: 'password',
   name: 'name',
   surname: 'surname',
   email: 'email',
@@ -1555,6 +1558,7 @@ export type TeacherScalarFieldEnum = (typeof TeacherScalarFieldEnum)[keyof typeo
 export const ParentScalarFieldEnum = {
   id: 'id',
   username: 'username',
+  password: 'password',
   name: 'name',
   surname: 'surname',
   email: 'email',

@@ -1,17 +1,8 @@
-import { getClerkUser, getCurrentUser } from "@/lib/auth";
-import { UserButton } from "@clerk/nextjs";
+import { getCurrentUser } from "@/lib/auth";
 import Image from "next/image";
 
 const Navbar = async () => {
-  const [user, { role }] = await Promise.all([
-    getClerkUser(),
-    getCurrentUser(),
-  ]);
-
-  const name =
-    [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
-    user?.username ||
-    "";
+  const { name, role } = await getCurrentUser();
 
   return (
     <div className="flex items-center justify-between p-4">
@@ -32,8 +23,12 @@ const Navbar = async () => {
             {role}
           </span>
         </div>
-        <UserButton
-          appearance={{ elements: { userButtonAvatarBox: "w-9 h-9" } }}
+        <Image
+          src="/avatar.png"
+          alt=""
+          width={36}
+          height={36}
+          className="rounded-full"
         />
       </div>
     </div>

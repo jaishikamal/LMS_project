@@ -1,12 +1,9 @@
 /**
  * Roles supported by the LMS.
  *
- * A user's role lives on their Clerk `publicMetadata` (`{ "role": "admin" }`)
- * and is forwarded into the session token so it can be read without an extra
- * network request. Configure this once in the Clerk Dashboard under
- * Sessions -> Customize session token:
- *
- *   { "metadata": "{{user.public_metadata}}" }
+ * A user's role is derived from which table their account row lives in
+ * (Admin, Teacher, Student or Parent) and is attached to the NextAuth JWT/
+ * session in `src/auth.ts`.
  */
 export const ROLES = ["admin", "teacher", "student", "parent"] as const;
 
