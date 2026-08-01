@@ -200,18 +200,18 @@ const FormModal = ({
       </button>
       {open && (
         <div
-          className="w-screen h-screen fixed left-0 top-0  bg-opacity-40 z-50 flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200"
+          className="w-screen h-screen fixed left-0 top-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200"
           onClick={(e) => {
             // Close when clicking backdrop
             if (e.target === e.currentTarget) setOpen(false);
           }}
         >
           <div
-            className="bg-white rounded-xl shadow-2xl relative w-full max-w-3xl my-8 animate-in zoom-in-95 duration-200"
+            className="bg-white rounded-xl shadow-2xl relative w-full max-w-3xl my-8 max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Close button */}
-            <div className="flex justify-end p-4 border-b border-gray-100">
+            <div className="flex justify-end p-4 border-b border-gray-100 shrink-0">
               <button
                 className="cursor-pointer hover:bg-gray-100 rounded-full p-2 transition-all duration-200 hover:rotate-90"
                 onClick={() => setOpen(false)}
@@ -222,7 +222,7 @@ const FormModal = ({
             </div>
 
             {/* Form content */}
-            <div className="px-8 pb-8 pt-4">
+            <div className="px-8 pb-8 pt-4 overflow-y-auto">
               <Form />
             </div>
           </div>

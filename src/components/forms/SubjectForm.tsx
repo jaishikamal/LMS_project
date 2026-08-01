@@ -65,7 +65,7 @@ const SubjectForm = ({
         {type === "create" ? "Create a new subject" : "Update subject"}
       </h1>
 
-      <div className="flex justify-between flex-wrap gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <InputField
           label="Subject Name"
           name="name"

@@ -2,22 +2,33 @@
 
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+
+const DEBOUNCE_MS = 300;
 
 const TableSearch = () => {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const urlValue = searchParams.get("search") ?? "";
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  // Controlled so every keystroke re-renders the input immediately; the URL
+  // update is what gets debounced, not the visible typing.
+  const [value, setValue] = useState(urlValue);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const value = (e.currentTarget.elements.namedItem("search") as HTMLInputElement)
-      .value.trim();
+  // Keep the input in sync if the URL changes from elsewhere (e.g. browser
+  // back/forward, or navigating to a different list page).
+  useEffect(() => {
+    setValue(urlValue);
+  }, [urlValue]);
 
+  const pushSearch = (raw: string) => {
+    const trimmed = raw.trim();
     const params = new URLSearchParams(searchParams);
 
-    if (value) {
-      params.set("search", value);
+    if (trimmed) {
+      params.set("search", trimmed);
     } else {
       params.delete("search");
     }
@@ -28,6 +39,30 @@ const TableSearch = () => {
     const queryString = params.toString();
     router.push(queryString ? `${pathname}?${queryString}` : pathname);
   };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const next = e.target.value;
+    setValue(next);
+
+    // Search as you type, letter by letter, without spamming navigation on
+    // every keystroke.
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => pushSearch(next), DEBOUNCE_MS);
+  };
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    // Pressing Enter or clicking the search icon applies immediately,
+    // bypassing the debounce.
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    pushSearch(value);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
 
   return (
     <form
@@ -40,7 +75,8 @@ const TableSearch = () => {
       <input
         type="text"
         name="search"
-        defaultValue={searchParams.get("search") ?? ""}
+        value={value}
+        onChange={handleChange}
         placeholder="Search..."
         className="w-[200px] p-2 bg-transparent outline-none"
       />

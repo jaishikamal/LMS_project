@@ -31,7 +31,7 @@ const ImageUploadField = ({
   // button that silently does nothing.
   if (!uploadPreset) {
     return (
-      <div className="flex flex-col gap-2 w-full md:w-1/4">
+      <div className="flex flex-col gap-2 w-full">
         <label className="text-xs text-gray-500">{label}</label>
         <p className="text-xs text-amber-600">
           Image upload is unavailable: set NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET.
@@ -41,7 +41,7 @@ const ImageUploadField = ({
   }
 
   return (
-    <div className="flex flex-col gap-2 w-full md:w-1/4">
+    <div className="flex flex-col gap-2 w-full">
       <label className="text-xs text-gray-500">{label}</label>
 
       <CldUploadWidget

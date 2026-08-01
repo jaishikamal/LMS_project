@@ -63,7 +63,7 @@ const ClassForm = ({
         {type === "create" ? "Create a new class" : "Update class"}
       </h1>
 
-      <div className="flex justify-between flex-wrap gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <InputField
           label="Class Name"
           name="name"
