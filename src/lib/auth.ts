@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { cache } from "react";
+import { hasPermission, type PermissionKey } from "./permissions";
 import { isRole, roleHomeRoute, type Role } from "./roles";
 
 /**
@@ -39,6 +40,21 @@ export const requireRole = async (allowedRoles: readonly Role[]) => {
   if (!userId) redirect("/sign-in");
   if (!role) redirect("/");
   if (!allowedRoles.includes(role)) redirect(roleHomeRoute(role));
+
+  return { userId, role };
+};
+
+/**
+ * RBAC guard: requires a signed-in user whose role holds `permission`.
+ * Access without the permission redirects to the user's own dashboard
+ * (admins keep every permission via the seed, so this never locks them out).
+ */
+export const requirePermission = async (permission: PermissionKey) => {
+  const { userId, role } = await getCurrentUser();
+
+  if (!userId) redirect("/sign-in");
+  if (!role) redirect("/");
+  if (!(await hasPermission(role, permission))) redirect(roleHomeRoute(role));
 
   return { userId, role };
 };

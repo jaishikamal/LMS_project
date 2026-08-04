@@ -3,6 +3,7 @@ import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
 import { Prisma } from "@/lib/generated/prisma/client";
+import { requirePermission } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { applyRoleCondition, getRoleScope } from "@/lib/roleScope";
 import { ITEM_PER_PAGE } from "@/lib/settings";
@@ -38,7 +39,8 @@ const SubjectListPage = async ({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
-  const { role, userId, classIds } = await getRoleScope();
+  await requirePermission("subjects.view");
+  const { role, userId } = await getRoleScope();
   const { page: pageParam, ...queryParams } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
 
@@ -50,10 +52,13 @@ const SubjectListPage = async ({
   // param can't override the teacher's own scoping.
   const roleCondition: Prisma.SubjectWhereInput | null =
     role === "teacher" && userId
-      ? { teachers: { some: { id: userId } } }
-      : (role === "student" || role === "parent") && classIds
-        ? { lessons: { some: { classId: { in: classIds } } } }
-        : null;
+      ? {
+        OR: [
+          { teachers: { some: { id: userId } } },
+          { classSubjects: { some: { teacherId: userId } } },
+        ],
+      }
+      : null;
 
   for (const [rawKey, value] of Object.entries(queryParams)) {
     if (!value) continue;
@@ -62,9 +67,18 @@ const SubjectListPage = async ({
 
     switch (rawKey.toLowerCase()) {
       case "teacherid":
-        query.teachers = {
-          some: { id: param },
-        };
+        query.OR = [
+          {
+            teachers: {
+              some: { id: param },
+            },
+          },
+          {
+            classSubjects: {
+              some: { teacherId: param },
+            },
+          },
+        ];
         break;
       case "search":
         query.name = { contains: param, mode: "insensitive" };
@@ -84,6 +98,11 @@ const SubjectListPage = async ({
       where: query,
       include: {
         teachers: true,
+        classSubjects: {
+          select: {
+            teacher: { select: { id: true, name: true, surname: true } },
+          },
+        },
       },
       orderBy: { name: "asc" },
       take: ITEM_PER_PAGE,
@@ -106,14 +125,24 @@ const SubjectListPage = async ({
     })),
   };
 
-  const subjectsData: Subject[] = subjects.map((subject) => ({
-    id: subject.id,
-    name: subject.name,
-    teachers: subject.teachers.map(
-      (teacher) => `${teacher.name} ${teacher.surname}`
-    ),
-    teacherIds: subject.teachers.map((teacher) => teacher.id),
-  }));
+  const subjectsData: Subject[] = subjects.map((subject) => {
+    // Teachers from the many-to-many plus teachers assigned via ClassSubject.
+    const teacherNames = new Set(
+      subject.teachers.map((teacher) => `${teacher.name} ${teacher.surname}`)
+    );
+    const teacherIds = new Set(subject.teachers.map((teacher) => teacher.id));
+    subject.classSubjects.forEach((item) => {
+      teacherNames.add(`${item.teacher.name} ${item.teacher.surname}`);
+      teacherIds.add(item.teacher.id);
+    });
+
+    return {
+      id: subject.id,
+      name: subject.name,
+      teachers: [...teacherNames],
+      teacherIds: [...teacherIds],
+    };
+  });
 
   const renderRow = (item: Subject) => (
     <tr

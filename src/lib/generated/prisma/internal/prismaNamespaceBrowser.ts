@@ -53,18 +53,40 @@ export const AnyNull = runtime.AnyNull
 export const ModelName = {
   Admin: 'Admin',
   Student: 'Student',
+  Guardian: 'Guardian',
   Teacher: 'Teacher',
   Parent: 'Parent',
   Grade: 'Grade',
   Class: 'Class',
   Subject: 'Subject',
-  Lesson: 'Lesson',
+  ClassSubject: 'ClassSubject',
   Exam: 'Exam',
   Assignment: 'Assignment',
   Result: 'Result',
   Attendance: 'Attendance',
   Event: 'Event',
-  Announcement: 'Announcement'
+  Announcement: 'Announcement',
+  Period: 'Period',
+  TimetableSlot: 'TimetableSlot',
+  Lesson: 'Lesson',
+  LogbookEntry: 'LogbookEntry',
+  Staff: 'Staff',
+  StaffAttendance: 'StaffAttendance',
+  StaffPerformance: 'StaffPerformance',
+  FeeItem: 'FeeItem',
+  Invoice: 'Invoice',
+  Payment: 'Payment',
+  SalaryRecord: 'SalaryRecord',
+  Expense: 'Expense',
+  Notification: 'Notification',
+  NotificationRead: 'NotificationRead',
+  Message: 'Message',
+  InventoryItem: 'InventoryItem',
+  InventoryIssue: 'InventoryIssue',
+  Setting: 'Setting',
+  AuditLog: 'AuditLog',
+  Permission: 'Permission',
+  RolePermission: 'RolePermission'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -112,6 +134,19 @@ export const StudentScalarFieldEnum = {
 } as const
 
 export type StudentScalarFieldEnum = (typeof StudentScalarFieldEnum)[keyof typeof StudentScalarFieldEnum]
+
+
+export const GuardianScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  relationship: 'relationship',
+  phone: 'phone',
+  email: 'email',
+  isPrimary: 'isPrimary',
+  studentId: 'studentId'
+} as const
+
+export type GuardianScalarFieldEnum = (typeof GuardianScalarFieldEnum)[keyof typeof GuardianScalarFieldEnum]
 
 
 export const TeacherScalarFieldEnum = {
@@ -175,18 +210,14 @@ export const SubjectScalarFieldEnum = {
 export type SubjectScalarFieldEnum = (typeof SubjectScalarFieldEnum)[keyof typeof SubjectScalarFieldEnum]
 
 
-export const LessonScalarFieldEnum = {
+export const ClassSubjectScalarFieldEnum = {
   id: 'id',
-  name: 'name',
-  day: 'day',
-  startTime: 'startTime',
-  endTime: 'endTime',
   subjectId: 'subjectId',
   classId: 'classId',
   teacherId: 'teacherId'
 } as const
 
-export type LessonScalarFieldEnum = (typeof LessonScalarFieldEnum)[keyof typeof LessonScalarFieldEnum]
+export type ClassSubjectScalarFieldEnum = (typeof ClassSubjectScalarFieldEnum)[keyof typeof ClassSubjectScalarFieldEnum]
 
 
 export const ExamScalarFieldEnum = {
@@ -194,7 +225,7 @@ export const ExamScalarFieldEnum = {
   title: 'title',
   startTime: 'startTime',
   endTime: 'endTime',
-  lessonId: 'lessonId'
+  classSubjectId: 'classSubjectId'
 } as const
 
 export type ExamScalarFieldEnum = (typeof ExamScalarFieldEnum)[keyof typeof ExamScalarFieldEnum]
@@ -205,7 +236,7 @@ export const AssignmentScalarFieldEnum = {
   title: 'title',
   startDate: 'startDate',
   dueDate: 'dueDate',
-  lessonId: 'lessonId'
+  classSubjectId: 'classSubjectId'
 } as const
 
 export type AssignmentScalarFieldEnum = (typeof AssignmentScalarFieldEnum)[keyof typeof AssignmentScalarFieldEnum]
@@ -226,8 +257,8 @@ export const AttendanceScalarFieldEnum = {
   id: 'id',
   date: 'date',
   present: 'present',
-  studentId: 'studentId',
-  lessonId: 'lessonId'
+  classSubjectId: 'classSubjectId',
+  studentId: 'studentId'
 } as const
 
 export type AttendanceScalarFieldEnum = (typeof AttendanceScalarFieldEnum)[keyof typeof AttendanceScalarFieldEnum]
@@ -254,6 +285,264 @@ export const AnnouncementScalarFieldEnum = {
 } as const
 
 export type AnnouncementScalarFieldEnum = (typeof AnnouncementScalarFieldEnum)[keyof typeof AnnouncementScalarFieldEnum]
+
+
+export const PeriodScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  startTime: 'startTime',
+  endTime: 'endTime',
+  order: 'order'
+} as const
+
+export type PeriodScalarFieldEnum = (typeof PeriodScalarFieldEnum)[keyof typeof PeriodScalarFieldEnum]
+
+
+export const TimetableSlotScalarFieldEnum = {
+  id: 'id',
+  classId: 'classId',
+  dayOfWeek: 'dayOfWeek',
+  periodId: 'periodId',
+  classSubjectId: 'classSubjectId'
+} as const
+
+export type TimetableSlotScalarFieldEnum = (typeof TimetableSlotScalarFieldEnum)[keyof typeof TimetableSlotScalarFieldEnum]
+
+
+export const LessonScalarFieldEnum = {
+  id: 'id',
+  title: 'title',
+  topic: 'topic',
+  objectives: 'objectives',
+  materials: 'materials',
+  notes: 'notes',
+  startDate: 'startDate',
+  endDate: 'endDate',
+  classSubjectId: 'classSubjectId',
+  teacherId: 'teacherId'
+} as const
+
+export type LessonScalarFieldEnum = (typeof LessonScalarFieldEnum)[keyof typeof LessonScalarFieldEnum]
+
+
+export const LogbookEntryScalarFieldEnum = {
+  id: 'id',
+  date: 'date',
+  topic: 'topic',
+  summary: 'summary',
+  homework: 'homework',
+  notes: 'notes',
+  classSubjectId: 'classSubjectId',
+  teacherId: 'teacherId'
+} as const
+
+export type LogbookEntryScalarFieldEnum = (typeof LogbookEntryScalarFieldEnum)[keyof typeof LogbookEntryScalarFieldEnum]
+
+
+export const StaffScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  surname: 'surname',
+  email: 'email',
+  phone: 'phone',
+  address: 'address',
+  role: 'role',
+  department: 'department',
+  joinDate: 'joinDate',
+  birthday: 'birthday',
+  sex: 'sex',
+  img: 'img',
+  createdAt: 'createdAt'
+} as const
+
+export type StaffScalarFieldEnum = (typeof StaffScalarFieldEnum)[keyof typeof StaffScalarFieldEnum]
+
+
+export const StaffAttendanceScalarFieldEnum = {
+  id: 'id',
+  staffId: 'staffId',
+  date: 'date',
+  present: 'present',
+  status: 'status'
+} as const
+
+export type StaffAttendanceScalarFieldEnum = (typeof StaffAttendanceScalarFieldEnum)[keyof typeof StaffAttendanceScalarFieldEnum]
+
+
+export const StaffPerformanceScalarFieldEnum = {
+  id: 'id',
+  staffId: 'staffId',
+  reviewDate: 'reviewDate',
+  rating: 'rating',
+  comments: 'comments'
+} as const
+
+export type StaffPerformanceScalarFieldEnum = (typeof StaffPerformanceScalarFieldEnum)[keyof typeof StaffPerformanceScalarFieldEnum]
+
+
+export const FeeItemScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  amount: 'amount',
+  classId: 'classId'
+} as const
+
+export type FeeItemScalarFieldEnum = (typeof FeeItemScalarFieldEnum)[keyof typeof FeeItemScalarFieldEnum]
+
+
+export const InvoiceScalarFieldEnum = {
+  id: 'id',
+  invoiceNo: 'invoiceNo',
+  studentId: 'studentId',
+  feeItemId: 'feeItemId',
+  amount: 'amount',
+  dueDate: 'dueDate',
+  status: 'status',
+  issuedAt: 'issuedAt'
+} as const
+
+export type InvoiceScalarFieldEnum = (typeof InvoiceScalarFieldEnum)[keyof typeof InvoiceScalarFieldEnum]
+
+
+export const PaymentScalarFieldEnum = {
+  id: 'id',
+  invoiceId: 'invoiceId',
+  amount: 'amount',
+  method: 'method',
+  date: 'date',
+  reference: 'reference'
+} as const
+
+export type PaymentScalarFieldEnum = (typeof PaymentScalarFieldEnum)[keyof typeof PaymentScalarFieldEnum]
+
+
+export const SalaryRecordScalarFieldEnum = {
+  id: 'id',
+  recipientType: 'recipientType',
+  staffId: 'staffId',
+  teacherId: 'teacherId',
+  month: 'month',
+  amount: 'amount',
+  paid: 'paid',
+  paidDate: 'paidDate',
+  notes: 'notes'
+} as const
+
+export type SalaryRecordScalarFieldEnum = (typeof SalaryRecordScalarFieldEnum)[keyof typeof SalaryRecordScalarFieldEnum]
+
+
+export const ExpenseScalarFieldEnum = {
+  id: 'id',
+  title: 'title',
+  category: 'category',
+  amount: 'amount',
+  date: 'date',
+  notes: 'notes'
+} as const
+
+export type ExpenseScalarFieldEnum = (typeof ExpenseScalarFieldEnum)[keyof typeof ExpenseScalarFieldEnum]
+
+
+export const NotificationScalarFieldEnum = {
+  id: 'id',
+  title: 'title',
+  message: 'message',
+  role: 'role',
+  createdAt: 'createdAt'
+} as const
+
+export type NotificationScalarFieldEnum = (typeof NotificationScalarFieldEnum)[keyof typeof NotificationScalarFieldEnum]
+
+
+export const NotificationReadScalarFieldEnum = {
+  id: 'id',
+  notificationId: 'notificationId',
+  userId: 'userId',
+  readAt: 'readAt'
+} as const
+
+export type NotificationReadScalarFieldEnum = (typeof NotificationReadScalarFieldEnum)[keyof typeof NotificationReadScalarFieldEnum]
+
+
+export const MessageScalarFieldEnum = {
+  id: 'id',
+  senderId: 'senderId',
+  senderRole: 'senderRole',
+  recipientId: 'recipientId',
+  recipientRole: 'recipientRole',
+  subject: 'subject',
+  body: 'body',
+  sentAt: 'sentAt',
+  readAt: 'readAt'
+} as const
+
+export type MessageScalarFieldEnum = (typeof MessageScalarFieldEnum)[keyof typeof MessageScalarFieldEnum]
+
+
+export const InventoryItemScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  category: 'category',
+  quantity: 'quantity',
+  location: 'location',
+  description: 'description',
+  createdAt: 'createdAt'
+} as const
+
+export type InventoryItemScalarFieldEnum = (typeof InventoryItemScalarFieldEnum)[keyof typeof InventoryItemScalarFieldEnum]
+
+
+export const InventoryIssueScalarFieldEnum = {
+  id: 'id',
+  itemId: 'itemId',
+  borrowerType: 'borrowerType',
+  borrowerName: 'borrowerName',
+  issuedDate: 'issuedDate',
+  dueDate: 'dueDate',
+  returnedDate: 'returnedDate',
+  notes: 'notes'
+} as const
+
+export type InventoryIssueScalarFieldEnum = (typeof InventoryIssueScalarFieldEnum)[keyof typeof InventoryIssueScalarFieldEnum]
+
+
+export const SettingScalarFieldEnum = {
+  key: 'key',
+  value: 'value'
+} as const
+
+export type SettingScalarFieldEnum = (typeof SettingScalarFieldEnum)[keyof typeof SettingScalarFieldEnum]
+
+
+export const AuditLogScalarFieldEnum = {
+  id: 'id',
+  actorId: 'actorId',
+  actorRole: 'actorRole',
+  action: 'action',
+  entity: 'entity',
+  entityId: 'entityId',
+  details: 'details',
+  createdAt: 'createdAt'
+} as const
+
+export type AuditLogScalarFieldEnum = (typeof AuditLogScalarFieldEnum)[keyof typeof AuditLogScalarFieldEnum]
+
+
+export const PermissionScalarFieldEnum = {
+  key: 'key',
+  label: 'label',
+  category: 'category'
+} as const
+
+export type PermissionScalarFieldEnum = (typeof PermissionScalarFieldEnum)[keyof typeof PermissionScalarFieldEnum]
+
+
+export const RolePermissionScalarFieldEnum = {
+  role: 'role',
+  permissionKey: 'permissionKey'
+} as const
+
+export type RolePermissionScalarFieldEnum = (typeof RolePermissionScalarFieldEnum)[keyof typeof RolePermissionScalarFieldEnum]
 
 
 export const SortOrder = {

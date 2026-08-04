@@ -3,6 +3,7 @@ import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
 import { Prisma, UserSex } from "@/lib/generated/prisma/client";
+import { requirePermission } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { applyRoleCondition, getRoleScope } from "@/lib/roleScope";
 import { ITEM_PER_PAGE } from "@/lib/settings";
@@ -72,6 +73,7 @@ const TeacherListPage = async ({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
+  await requirePermission("teachers.view");
   const { role, classIds } = await getRoleScope();
   const { page: pageParam, ...queryParams } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
@@ -81,12 +83,18 @@ const TeacherListPage = async ({
   // Build the Prisma filter from the URL query params
   const query: Prisma.TeacherWhereInput = {};
 
-  // Teachers only see colleagues who teach within their own classes. Kept
-  // as a separate AND clause (applied below) so it can't be overwritten by
-  // a `classId`/`subjectId` query param targeting the same field.
+  // Teachers only see colleagues who supervise or teach within their own
+  // classes (supervised + taught, per the role scope). Kept as a separate
+  // AND clause (applied below) so it can't be overwritten by a
+  // `classId`/`subjectId` query param targeting the same field.
   const roleCondition: Prisma.TeacherWhereInput | null =
     role === "teacher" && classIds
-      ? { lessons: { some: { classId: { in: classIds } } } }
+      ? {
+        OR: [
+          { classes: { some: { id: { in: classIds } } } },
+          { classSubjects: { some: { classId: { in: classIds } } } },
+        ],
+      }
       : null;
 
   for (const [rawKey, value] of Object.entries(queryParams)) {
@@ -96,33 +104,64 @@ const TeacherListPage = async ({
 
     // Match keys case-insensitively so ?classId=3 and ?classid=3 both work
     switch (rawKey.toLowerCase()) {
-      // Only show teachers who teach a lesson to this student's class
+      // Only show teachers who teach or supervise this student's class
       case "studentid":
-        query.lessons = {
-          some: {
-            class: {
-              students: {
-                some: { id: param },
+        query.OR = [
+          {
+            classes: {
+              some: {
+                students: {
+                  some: { id: param },
+                },
               },
             },
           },
-        };
+          {
+            classSubjects: {
+              some: {
+                class: {
+                  students: {
+                    some: { id: param },
+                  },
+                },
+              },
+            },
+          },
+        ];
         break;
-      // Only show teachers who teach a lesson to this class
+      // Only show teachers who teach or supervise this class
       case "classid": {
         const classId = Number(param);
         if (!Number.isInteger(classId)) break;
-        query.lessons = {
-          some: { classId },
-        };
+        query.OR = [
+          {
+            classes: {
+              some: { id: classId },
+            },
+          },
+          {
+            classSubjects: {
+              some: { classId },
+            },
+          },
+        ];
         break;
       }
       case "subjectid": {
         const subjectId = Number(param);
         if (!Number.isInteger(subjectId)) break;
-        query.subjects = {
-          some: { id: subjectId },
-        };
+        query.OR = [
+          {
+            subjects: {
+              some: { id: subjectId },
+            },
+          },
+          {
+            classSubjects: {
+              some: { subjectId },
+            },
+          },
+        ];
         break;
       }
       case "search": {
@@ -155,6 +194,9 @@ const TeacherListPage = async ({
       include: {
         subjects: true,
         classes: true,
+        classSubjects: {
+          select: { class: { select: { name: true } } },
+        },
       },
       take: ITEM_PER_PAGE,
       skip: ITEM_PER_PAGE * (page - 1),
@@ -176,29 +218,35 @@ const TeacherListPage = async ({
     })),
   };
 
-  const teachersData: Teacher[] = teachers.map((teacher) => ({
-    id: teacher.id,
-    teacherId: teacher.username,
-    name: `${teacher.name} ${teacher.surname}`,
-    email: teacher.email,
-    photo: teacher.img || "/avatar.png",
-    phone: teacher.phone,
-    subjects: teacher.subjects.map((subject) => subject.name),
-    classes: teacher.classes.map((classItem) => classItem.name),
-    address: teacher.address,
-    // Raw fields the update form needs (the display values above are joined
-    // or renamed, so they can't be reused for form defaults).
-    username: teacher.username,
-    firstName: teacher.name,
-    surname: teacher.surname,
-    bloodType: teacher.bloodType,
-    sex: teacher.sex,
-    birthday: teacher.birthday,
-    // Raw column (not the avatar-fallback `photo` above) so the update form
-    // can preview the existing upload and keep it on save.
-    img: teacher.img,
-    subjectIds: teacher.subjects.map((subject) => subject.id),
-  }));
+  const teachersData: Teacher[] = teachers.map((teacher) => {
+    // Supervised classes plus classes they teach a subject in.
+    const classNames = new Set<string>(teacher.classes.map((classItem) => classItem.name));
+    teacher.classSubjects.forEach((item) => classNames.add(item.class.name));
+
+    return {
+      id: teacher.id,
+      teacherId: teacher.username,
+      name: `${teacher.name} ${teacher.surname}`,
+      email: teacher.email,
+      photo: teacher.img || "/avatar.png",
+      phone: teacher.phone,
+      subjects: teacher.subjects.map((subject) => subject.name),
+      classes: [...classNames],
+      address: teacher.address,
+      // Raw fields the update form needs (the display values above are joined
+      // or renamed, so they can't be reused for form defaults).
+      username: teacher.username,
+      firstName: teacher.name,
+      surname: teacher.surname,
+      bloodType: teacher.bloodType,
+      sex: teacher.sex,
+      birthday: teacher.birthday,
+      // Raw column (not the avatar-fallback `photo` above) so the update form
+      // can preview the existing upload and keep it on save.
+      img: teacher.img,
+      subjectIds: teacher.subjects.map((subject) => subject.id),
+    };
+  });
 
   const renderRow = (item: Teacher) => (
     <tr

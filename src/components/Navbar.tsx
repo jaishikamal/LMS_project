@@ -1,22 +1,44 @@
 import { getCurrentUser } from "@/lib/auth";
+import prisma from "@/lib/prisma";
 import Image from "next/image";
+import NotificationBell from "./NotificationBell";
+import type { FeedNotification } from "./NotificationFeed";
 
 const Navbar = async () => {
-  const { name, role } = await getCurrentUser();
+  const { name, role, userId } = await getCurrentUser();
+
+  const [notifications, unreadMessages] = await Promise.all([
+    role && userId
+      ? prisma.notification.findMany({
+          where: { role },
+          include: {
+            reads: {
+              where: { userId },
+              select: { id: true },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+        })
+      : Promise.resolve([]),
+    userId
+      ? prisma.message.count({ where: { recipientId: userId, readAt: null } })
+      : Promise.resolve(0),
+  ]);
+
+  const feed: FeedNotification[] = notifications.map((item) => ({
+    id: item.id,
+    title: item.title,
+    message: item.message,
+    createdAt: item.createdAt,
+    read: item.reads.length > 0,
+  }));
 
   return (
     <div className="flex items-center justify-between p-4">
       {/* ICONS AND USER */}
       <div className="flex items-center gap-6 justify-end w-full">
-        <div className="bg-white rounded-full w-7 h-7 flex items-center justify-center cursor-pointer">
-          <Image src="/message.png" alt="" width={20} height={20} />
-        </div>
-        <div className="bg-white rounded-full w-7 h-7 flex items-center justify-center cursor-pointer relative">
-          <Image src="/announcement.png" alt="" width={20} height={20} />
-          <div className="absolute -top-3 -right-3 w-5 h-5 flex items-center justify-center bg-purple-500 text-white rounded-full text-xs">
-            1
-          </div>
-        </div>
+        <NotificationBell notifications={feed} unreadMessages={unreadMessages} />
         <div className="flex flex-col">
           <span className="text-xs leading-3 font-medium">{name}</span>
           <span className="text-[10px] text-gray-500 text-right capitalize">

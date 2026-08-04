@@ -3,6 +3,7 @@ import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
 import { Prisma } from "@/lib/generated/prisma/client";
+import { requirePermission } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { applyRoleCondition, getRoleScope } from "@/lib/roleScope";
 import { ITEM_PER_PAGE } from "@/lib/settings";
@@ -51,6 +52,7 @@ const ClassListPage = async ({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
+  await requirePermission("classes.view");
   const { role, classIds } = await getRoleScope();
   const { page: pageParam, ...queryParams } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
@@ -75,9 +77,11 @@ const ClassListPage = async ({
         query.supervisorId = param;
         break;
       case "teacherid":
-        query.lessons = {
-          some: { teacherId: param },
-        };
+        // Classes the teacher supervises or teaches a subject in.
+        query.OR = [
+          { supervisorId: param },
+          { classSubjects: { some: { teacherId: param } } },
+        ];
         break;
       case "gradeid": {
         const gradeId = Number(param);

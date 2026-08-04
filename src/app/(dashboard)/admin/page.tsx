@@ -74,6 +74,42 @@ const getRecentAnnouncements = async () => {
   }));
 };
 
+// Income = payments received, expense = recorded expenses, grouped by month
+// over the last 12 months so the finance chart reflects real data.
+const getFinanceSeries = async () => {
+  const [payments, expenses] = await Promise.all([
+    prisma.payment.findMany({ select: { amount: true, date: true } }),
+    prisma.expense.findMany({ select: { amount: true, date: true } }),
+  ]);
+
+  const monthKey = (date: Date) =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+
+  const incomeByMonth = new Map<string, number>();
+  for (const payment of payments) {
+    const key = monthKey(payment.date);
+    incomeByMonth.set(key, (incomeByMonth.get(key) ?? 0) + Number(payment.amount));
+  }
+
+  const expenseByMonth = new Map<string, number>();
+  for (const expense of expenses) {
+    const key = monthKey(expense.date);
+    expenseByMonth.set(key, (expenseByMonth.get(key) ?? 0) + Number(expense.amount));
+  }
+
+  const now = new Date();
+  const names = new Intl.DateTimeFormat("en-US", { month: "short" });
+  return Array.from({ length: 12 }, (_, i) => {
+    const date = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1);
+    const key = monthKey(date);
+    return {
+      name: names.format(date),
+      income: incomeByMonth.get(key) ?? 0,
+      expense: expenseByMonth.get(key) ?? 0,
+    };
+  });
+};
+
 const AdminPage = async ({
   searchParams,
 }: {
@@ -96,6 +132,7 @@ const AdminPage = async ({
     attendanceData,
     dayEvents,
     recentAnnouncements,
+    financeData,
   ] = await Promise.all([
     prisma.student.count(),
     prisma.student.count({ where: { sex: UserSex.MALE } }),
@@ -106,39 +143,39 @@ const AdminPage = async ({
     getAttendanceForLastWeek(),
     getEventsForDay(start, end),
     getRecentAnnouncements(),
+    getFinanceSeries(),
   ]);
 
   return (
-    <div className="p-4 flex gap-4 flex-col md:flex-row">
+    <div className="h-full min-h-0 p-4 flex gap-4 flex-col xl:flex-row">
       {/* LEFT */}
-      <div className="w-full lg:w-2/3 flex flex-col gap-8">
+      <div className="flex-1 min-h-0 flex flex-col gap-4">
         {/* USER CARDS */}
-        <div className="flex gap-4 justify-between flex-wrap">
+        <div className="flex gap-4 justify-between flex-wrap shrink-0">
           <UserCard type="student" count={studentCount} />
           <UserCard type="teacher" count={teacherCount} />
           <UserCard type="parent" count={parentCount} />
           <UserCard type="admin" count={adminCount} />
         </div>
         {/* MIDDLE CHARTS */}
-        <div className="flex gap-4 flex-col lg:flex-row">
+        <div className="flex-1 min-h-0 flex gap-4 flex-col lg:flex-row">
           {/* COUNT CHART */}
-          <div className="w-full lg:w-1/3 h-[450px]">
+          <div className="flex-1 min-h-0 lg:w-1/3">
             <CountChart boys={boysCount} girls={girlsCount} />
           </div>
-          {/* ATTENDANCE CHART */}
-          <div className="w-full lg:w-2/3 h-[450px]">
-            <AttendanceChart data={attendanceData} />
+          {/* ATTENDANCE + FINANCE CHARTS */}
+          <div className="flex-1 min-h-0 lg:w-2/3 flex flex-col gap-4">
+            <div className="flex-1 min-h-0">
+              <AttendanceChart data={attendanceData} />
+            </div>
+            <div className="flex-1 min-h-0">
+              <FinanceChart data={financeData} />
+            </div>
           </div>
-        </div>
-        {/* BOTTOM CHART */}
-        <div className="w-full h-[500px]">
-          {/* No finance/payment model exists in the schema yet, so this
-              stays illustrative until that data is tracked. */}
-          <FinanceChart />
         </div>
       </div>
       {/* RIGHT */}
-      <div className="w-full lg:w-1/3 flex flex-col gap-8">
+      <div className="w-full xl:w-1/3 min-h-0 flex flex-col gap-4 overflow-y-auto">
         <EventCalendar events={dayEvents} />
         <Announcements items={recentAnnouncements} />
       </div>

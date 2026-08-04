@@ -3,27 +3,33 @@ import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
 import { Prisma } from "@/lib/generated/prisma/client";
+import { gradeFromScore } from "@/lib/grades";
+import { requirePermission } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { applyRoleCondition, getRoleScope } from "@/lib/roleScope";
 import { ITEM_PER_PAGE } from "@/lib/settings";
 import Image from "next/image";
+import Link from "next/link";
 
 type Result = {
   id: number;
   title: string;
   subject: string;
-  class: string;
-  teacher: string;
+  className: string;
   student: string;
   type: "exam" | "assignment";
   date: string;
   score: number;
+  // Raw fields the update form needs.
+  studentId: string;
+  examId: number | null;
+  assignmentId: number | null;
 };
 
 const baseColumns = [
   {
-    header: "Subject Name",
-    accessor: "name",
+    header: "Title",
+    accessor: "title",
   },
   {
     header: "Student",
@@ -35,13 +41,18 @@ const baseColumns = [
     className: "hidden md:table-cell",
   },
   {
-    header: "Teacher",
-    accessor: "teacher",
+    header: "Grade",
+    accessor: "grade",
+    className: "hidden md:table-cell",
+  },
+  {
+    header: "Subject",
+    accessor: "subject",
     className: "hidden md:table-cell",
   },
   {
     header: "Class",
-    accessor: "class",
+    accessor: "className",
     className: "hidden md:table-cell",
   },
   {
@@ -61,14 +72,13 @@ const ResultListPage = async ({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
-  const { role, userId, studentIds } = await getRoleScope();
+  await requirePermission("results.view");
+  const { role, userId, classIds, studentIds } = await getRoleScope();
   const { page: pageParam, ...queryParams } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
 
-  const columns =
-    role === "admin" || role === "teacher"
-      ? [...baseColumns, actionColumn]
-      : baseColumns;
+  const canManage = role === "admin" || role === "teacher";
+  const columns = canManage ? [...baseColumns, actionColumn] : baseColumns;
 
   const query: Prisma.ResultWhereInput = {};
 
@@ -81,8 +91,8 @@ const ResultListPage = async ({
       : role === "teacher" && userId
         ? {
           OR: [
-            { exam: { lesson: { teacherId: userId } } },
-            { assignment: { lesson: { teacherId: userId } } },
+            { exam: { classSubject: { teacherId: userId } } },
+            { assignment: { classSubject: { teacherId: userId } } },
           ],
         }
         : null;
@@ -100,16 +110,16 @@ const ResultListPage = async ({
       // filters have to consider both sides.
       case "teacherid":
         query.OR = [
-          { exam: { lesson: { teacherId: param } } },
-          { assignment: { lesson: { teacherId: param } } },
+          { exam: { classSubject: { teacherId: param } } },
+          { assignment: { classSubject: { teacherId: param } } },
         ];
         break;
       case "classid": {
         const classId = Number(param);
         if (!Number.isInteger(classId)) break;
         query.OR = [
-          { exam: { lesson: { classId } } },
-          { assignment: { lesson: { classId } } },
+          { exam: { classSubject: { classId } } },
+          { assignment: { classSubject: { classId } } },
         ];
         break;
       }
@@ -119,6 +129,8 @@ const ResultListPage = async ({
           { student: { surname: { contains: param, mode: "insensitive" } } },
           { exam: { title: { contains: param, mode: "insensitive" } } },
           { assignment: { title: { contains: param, mode: "insensitive" } } },
+          { exam: { classSubject: { subject: { name: { contains: param, mode: "insensitive" } } } } },
+          { assignment: { classSubject: { subject: { name: { contains: param, mode: "insensitive" } } } } },
         ];
         break;
       default:
@@ -128,43 +140,126 @@ const ResultListPage = async ({
 
   applyRoleCondition(query, roleCondition);
 
+  const scopedClassIds = classIds ?? [];
+
   // Independent read-only queries: Promise.all avoids the interactive
   // transaction timeout that $transaction([...]) would impose on a remote
   // pooled connection.
-  const [results, count] = await Promise.all([
-    prisma.result.findMany({
-      where: query,
-      include: {
-        student: { select: { name: true, surname: true } },
-        exam: {
-          include: {
-            lesson: {
-              select: {
-                subject: { select: { name: true } },
-                class: { select: { name: true } },
-                teacher: { select: { name: true, surname: true } },
+  const [results, count, scopedExams, scopedAssignments, scopedStudents] =
+    await Promise.all([
+      prisma.result.findMany({
+        where: query,
+        include: {
+          student: { select: { name: true, surname: true } },
+          exam: {
+            select: {
+              title: true,
+              startTime: true,
+              classSubject: {
+                select: {
+                  classId: true,
+                  subject: { select: { name: true } },
+                  class: { select: { name: true } },
+                },
+              },
+            },
+          },
+          assignment: {
+            select: {
+              title: true,
+              dueDate: true,
+              classSubject: {
+                select: {
+                  classId: true,
+                  subject: { select: { name: true } },
+                  class: { select: { name: true } },
+                },
               },
             },
           },
         },
-        assignment: {
-          include: {
-            lesson: {
-              select: {
-                subject: { select: { name: true } },
-                class: { select: { name: true } },
-                teacher: { select: { name: true, surname: true } },
+        orderBy: { id: "desc" },
+        take: ITEM_PER_PAGE,
+        skip: ITEM_PER_PAGE * (page - 1),
+      }),
+      prisma.result.count({ where: query }),
+      // Options for the result form's assessment select.
+      canManage
+        ? prisma.exam.findMany({
+            where: role === "teacher" && userId
+              ? { classSubject: { teacherId: userId } }
+              : {},
+            select: {
+              id: true,
+              title: true,
+              classSubject: {
+                select: {
+                  classId: true,
+                  subject: { select: { name: true } },
+                  class: { select: { name: true } },
+                },
               },
             },
-          },
-        },
-      },
-      orderBy: { id: "desc" },
-      take: ITEM_PER_PAGE,
-      skip: ITEM_PER_PAGE * (page - 1),
-    }),
-    prisma.result.count({ where: query }),
-  ]);
+            orderBy: { id: "desc" },
+          })
+        : Promise.resolve([]),
+      canManage
+        ? prisma.assignment.findMany({
+            where: role === "teacher" && userId
+              ? { classSubject: { teacherId: userId } }
+              : {},
+            select: {
+              id: true,
+              title: true,
+              classSubject: {
+                select: {
+                  classId: true,
+                  subject: { select: { name: true } },
+                  class: { select: { name: true } },
+                },
+              },
+            },
+            orderBy: { id: "desc" },
+          })
+        : Promise.resolve([]),
+      canManage
+        ? prisma.student.findMany({
+            where: role === "teacher" && classIds
+              ? { classId: { in: scopedClassIds } }
+              : {},
+            select: {
+              id: true,
+              name: true,
+              surname: true,
+              class: { select: { name: true } },
+              classId: true,
+            },
+            orderBy: [{ surname: "asc" }, { name: "asc" }],
+          })
+        : Promise.resolve([]),
+    ]);
+
+  const relatedData = canManage
+    ? {
+        assessments: [
+          ...scopedExams.map((exam) => ({
+            value: `exam:${exam.id}`,
+            label: `${exam.title} (Exam) · ${exam.classSubject.subject.name} · ${exam.classSubject.class.name}`,
+            classId: exam.classSubject.classId,
+          })),
+          ...scopedAssignments.map((assignment) => ({
+            value: `assignment:${assignment.id}`,
+            label: `${assignment.title} (Assignment) · ${assignment.classSubject.subject.name} · ${assignment.classSubject.class.name}`,
+            classId: assignment.classSubject.classId,
+          })),
+        ],
+        resultStudents: scopedStudents.map((student) => ({
+          value: student.id,
+          label: `${student.name} ${student.surname} · ${student.class.name}`,
+          classId: student.classId,
+        })),
+      }
+    : undefined;
 
   const resultsData: Result[] = results.flatMap((result) => {
     // Both relations are optional in the schema; skip orphaned rows rather
@@ -179,13 +274,15 @@ const ResultListPage = async ({
       {
         id: result.id,
         title: source.title,
-        subject: source.lesson.subject.name,
-        class: source.lesson.class.name,
-        teacher: `${source.lesson.teacher.name} ${source.lesson.teacher.surname}`,
+        subject: source.classSubject.subject.name,
+        className: source.classSubject.class.name,
         student: `${result.student.name} ${result.student.surname}`,
         type: isExam ? ("exam" as const) : ("assignment" as const),
         date: new Intl.DateTimeFormat("en-US").format(date),
         score: result.score,
+        studentId: result.studentId,
+        examId: result.examId,
+        assignmentId: result.assignmentId,
       },
     ];
   });
@@ -195,16 +292,22 @@ const ResultListPage = async ({
       key={item.id}
       className="border-b border-gray-200 even:bg-slate-50 text-sm hover:bg-kamal-purple-light"
     >
-      <td className="flex items-center gap-4 p-4">{item.subject}</td>
+      <td className="flex items-center gap-4 p-4">{item.title}</td>
       <td>{item.student}</td>
       <td className="hidden md:table-cell">{item.score}</td>
-      <td className="hidden md:table-cell">{item.teacher}</td>
-      <td className="hidden md:table-cell">{item.class}</td>
+      <td className="hidden md:table-cell font-medium">{gradeFromScore(item.score)}</td>
+      <td className="hidden md:table-cell">{item.subject}</td>
+      <td className="hidden md:table-cell">{item.className}</td>
       <td className="hidden md:table-cell">{item.date}</td>
-      {(role === "admin" || role === "teacher") && (
+      {canManage && (
         <td>
           <div className="flex items-center gap-2">
-            <FormModal table="result" type="update" data={item} />
+            <FormModal
+              table="result"
+              type="update"
+              data={item}
+              relatedData={relatedData}
+            />
             <FormModal table="result" type="delete" id={item.id} />
           </div>
         </td>
@@ -226,8 +329,20 @@ const ResultListPage = async ({
             <button className="w-8 h-8 flex items-center justify-center rounded-full bg-kamal-yellow">
               <Image src="/sort.png" alt="" width={14} height={14} />
             </button>
-            {(role === "admin" || role === "teacher") && (
-              <FormModal table="result" type="create" />
+            {canManage && (
+              <FormModal
+                table="result"
+                type="create"
+                relatedData={relatedData}
+              />
+            )}
+            {canManage && (
+              <Link
+                href="/list/results/bulk"
+                className="bg-kamal-sky text-white text-sm px-4 py-2 rounded-md"
+              >
+                Bulk Entry
+              </Link>
             )}
           </div>
         </div>

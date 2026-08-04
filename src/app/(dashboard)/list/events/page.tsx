@@ -3,6 +3,7 @@ import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
 import { Prisma } from "@/lib/generated/prisma/client";
+import { requirePermission } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { applyRoleCondition, getRoleScope } from "@/lib/roleScope";
 import { ITEM_PER_PAGE } from "@/lib/settings";
@@ -12,9 +13,11 @@ type Event = {
   id: number;
   title: string;
   class: string;
+  description: string;
+  classId: number | null;
   date: string;
-  startTime: string;
-  endTime: string;
+  startTime: Date;
+  endTime: Date;
 };
 
 const baseColumns = [
@@ -60,6 +63,7 @@ const EventListPage = async ({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
+  await requirePermission("events.view");
   const { role, classIds } = await getRoleScope();
   const { page: pageParam, ...queryParams } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
@@ -115,7 +119,7 @@ const EventListPage = async ({
   // Independent read-only queries: Promise.all avoids the interactive
   // transaction timeout that $transaction([...]) would impose on a remote
   // pooled connection.
-  const [events, count] = await Promise.all([
+  const [events, count, classes] = await Promise.all([
     prisma.event.findMany({
       where: query,
       include: {
@@ -126,16 +130,34 @@ const EventListPage = async ({
       skip: ITEM_PER_PAGE * (page - 1),
     }),
     prisma.event.count({ where: query }),
+    role === "admin"
+      ? prisma.class.findMany({
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        })
+      : Promise.resolve([]),
   ]);
+
+  // Admins can scope an event to a class; everyone else just reads.
+  const relatedData =
+    role === "admin"
+      ? {
+          classes: classes.map((item) => ({
+            value: item.id,
+            label: item.name,
+          })),
+        }
+      : undefined;
 
   const eventsData: Event[] = events.map((event) => ({
     id: event.id,
     title: event.title,
-    // classId is optional: no class means the event is school-wide
     class: event.class?.name ?? "-",
+    description: event.description,
+    classId: event.classId,
     date: dateFormat.format(event.startTime),
-    startTime: timeFormat.format(event.startTime),
-    endTime: timeFormat.format(event.endTime),
+    startTime: event.startTime,
+    endTime: event.endTime,
   }));
 
   const renderRow = (item: Event) => (
@@ -146,12 +168,12 @@ const EventListPage = async ({
       <td className="flex items-center gap-4 p-4">{item.title}</td>
       <td>{item.class}</td>
       <td className="hidden md:table-cell">{item.date}</td>
-      <td className="hidden md:table-cell">{item.startTime}</td>
-      <td className="hidden md:table-cell">{item.endTime}</td>
+      <td className="hidden md:table-cell">{timeFormat.format(item.startTime)}</td>
+      <td className="hidden md:table-cell">{timeFormat.format(item.endTime)}</td>
       {role === "admin" && (
         <td>
           <div className="flex items-center gap-2">
-            <FormModal table="event" type="update" data={item} />
+            <FormModal table="event" type="update" data={item} relatedData={relatedData} />
             <FormModal table="event" type="delete" id={item.id} />
           </div>
         </td>
@@ -173,7 +195,9 @@ const EventListPage = async ({
             <button className="w-8 h-8 flex items-center justify-center rounded-full bg-kamal-yellow">
               <Image src="/sort.png" alt="" width={14} height={14} />
             </button>
-            {role === "admin" && <FormModal table="event" type="create" />}
+            {role === "admin" && (
+              <FormModal table="event" type="create" relatedData={relatedData} />
+            )}
           </div>
         </div>
       </div>

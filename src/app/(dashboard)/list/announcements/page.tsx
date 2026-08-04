@@ -3,6 +3,7 @@ import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
 import { Prisma } from "@/lib/generated/prisma/client";
+import { requirePermission } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { applyRoleCondition, getRoleScope } from "@/lib/roleScope";
 import { ITEM_PER_PAGE } from "@/lib/settings";
@@ -43,6 +44,7 @@ const AnnouncementListPage = async ({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
+  await requirePermission("announcements.view");
   const { role, classIds } = await getRoleScope();
   const { page: pageParam, ...queryParams } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
@@ -97,7 +99,7 @@ const AnnouncementListPage = async ({
   // Independent read-only queries: Promise.all avoids the interactive
   // transaction timeout that $transaction([...]) would impose on a remote
   // pooled connection.
-  const [announcements, count] = await Promise.all([
+  const [announcements, count, classes] = await Promise.all([
     prisma.announcement.findMany({
       where: query,
       include: {
@@ -108,7 +110,24 @@ const AnnouncementListPage = async ({
       skip: ITEM_PER_PAGE * (page - 1),
     }),
     prisma.announcement.count({ where: query }),
+    role === "admin"
+      ? prisma.class.findMany({
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        })
+      : Promise.resolve([]),
   ]);
+
+  // Admins can target an announcement at a class; everyone else just reads.
+  const relatedData =
+    role === "admin"
+      ? {
+          classes: classes.map((item) => ({
+            value: item.id,
+            label: item.name,
+          })),
+        }
+      : undefined;
 
   const announcementsData: Announcement[] = announcements.map(
     (announcement) => ({
@@ -130,7 +149,12 @@ const AnnouncementListPage = async ({
       {role === "admin" && (
         <td>
           <div className="flex items-center gap-2">
-            <FormModal table="announcement" type="update" data={item} />
+            <FormModal
+              table="announcement"
+              type="update"
+              data={item}
+              relatedData={relatedData}
+            />
             <FormModal table="announcement" type="delete" id={item.id} />
           </div>
         </td>
@@ -155,7 +179,11 @@ const AnnouncementListPage = async ({
               <Image src="/sort.png" alt="" width={14} height={14} />
             </button>
             {role === "admin" && (
-              <FormModal table="announcement" type="create" />
+              <FormModal
+                table="announcement"
+                type="create"
+                relatedData={relatedData}
+              />
             )}
           </div>
         </div>

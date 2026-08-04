@@ -3,6 +3,7 @@ import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
 import { Prisma } from "@/lib/generated/prisma/client";
+import { requirePermission } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { applyRoleCondition, getRoleScope } from "@/lib/roleScope";
 import { ITEM_PER_PAGE } from "@/lib/settings";
@@ -10,25 +11,29 @@ import Image from "next/image";
 
 type Exam = {
   id: number;
+  title: string;
   subject: string;
-  class: string;
-  teacher: string;
+  className: string;
   date: string;
+  // Raw fields the update form needs.
+  startTime: Date;
+  endTime: Date;
+  classSubjectId: number;
 };
 
 const baseColumns = [
   {
-    header: "Subject Name",
-    accessor: "name",
+    header: "Title",
+    accessor: "title",
+  },
+  {
+    header: "Subject",
+    accessor: "subject",
+    className: "hidden md:table-cell",
   },
   {
     header: "Class",
-    accessor: "class",
-  },
-  {
-    header: "Teacher",
-    accessor: "teacher",
-    className: "hidden md:table-cell",
+    accessor: "className",
   },
   {
     header: "Date",
@@ -47,27 +52,23 @@ const ExamListPage = async ({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
+  await requirePermission("exams.view");
   const { role, userId, classIds } = await getRoleScope();
   const { page: pageParam, ...queryParams } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
 
-  const columns =
-    role === "admin" || role === "teacher"
-      ? [...baseColumns, actionColumn]
-      : baseColumns;
+  const canManage = role === "admin" || role === "teacher";
+  const columns = canManage ? [...baseColumns, actionColumn] : baseColumns;
 
   const query: Prisma.ExamWhereInput = {};
-  // Exam has no direct class/teacher/subject columns, so all of these
-  // filters go through the related lesson.
-  const lessonFilter: Prisma.LessonWhereInput = {};
 
-  // Kept separate and AND-merged after the loop so a `teacherId`/`classId`
-  // query param can't override the role-based scoping.
-  const roleCondition: Prisma.LessonWhereInput | null =
+  // Kept separate and AND-merged after the loop so a `classId` query param
+  // can't override the role-based scoping.
+  const roleCondition: Prisma.ExamWhereInput | null =
     role === "teacher" && userId
-      ? { teacherId: userId }
+      ? { classSubject: { teacherId: userId } }
       : (role === "student" || role === "parent") && classIds
-        ? { classId: { in: classIds } }
+        ? { classSubject: { class: { id: { in: classIds } } } }
         : null;
 
   for (const [rawKey, value] of Object.entries(queryParams)) {
@@ -76,35 +77,25 @@ const ExamListPage = async ({
     if (!param) continue;
 
     switch (rawKey.toLowerCase()) {
-      case "teacherid":
-        lessonFilter.teacherId = param;
-        break;
       case "classid": {
         const classId = Number(param);
         if (!Number.isInteger(classId)) break;
-        lessonFilter.classId = classId;
+        query.classSubject = { classId };
         break;
       }
-      case "subjectid": {
-        const subjectId = Number(param);
-        if (!Number.isInteger(subjectId)) break;
-        lessonFilter.subjectId = subjectId;
+      case "teacherid":
+        query.classSubject = { teacherId: param };
         break;
-      }
       case "studentid":
-        lessonFilter.class = {
-          students: {
-            some: { id: param },
-          },
+        query.classSubject = {
+          class: { students: { some: { id: param } } },
         };
         break;
       case "search":
         query.OR = [
           { title: { contains: param, mode: "insensitive" } },
-          { lesson: { subject: { name: { contains: param, mode: "insensitive" } } } },
-          { lesson: { class: { name: { contains: param, mode: "insensitive" } } } },
-          { lesson: { teacher: { name: { contains: param, mode: "insensitive" } } } },
-          { lesson: { teacher: { surname: { contains: param, mode: "insensitive" } } } },
+          { classSubject: { subject: { name: { contains: param, mode: "insensitive" } } } },
+          { classSubject: { class: { name: { contains: param, mode: "insensitive" } } } },
         ];
         break;
       default:
@@ -112,24 +103,19 @@ const ExamListPage = async ({
     }
   }
 
-  applyRoleCondition(lessonFilter, roleCondition);
-
-  if (Object.keys(lessonFilter).length > 0) {
-    query.lesson = lessonFilter;
-  }
+  applyRoleCondition(query, roleCondition);
 
   // Independent read-only queries: Promise.all avoids the interactive
   // transaction timeout that $transaction([...]) would impose on a remote
   // pooled connection.
-  const [exams, count] = await Promise.all([
+  const [exams, count, classSubjects] = await Promise.all([
     prisma.exam.findMany({
       where: query,
       include: {
-        lesson: {
+        classSubject: {
           select: {
             subject: { select: { name: true } },
             class: { select: { name: true } },
-            teacher: { select: { name: true, surname: true } },
           },
         },
       },
@@ -138,15 +124,38 @@ const ExamListPage = async ({
       skip: ITEM_PER_PAGE * (page - 1),
     }),
     prisma.exam.count({ where: query }),
+    canManage
+      ? prisma.classSubject.findMany({
+          where: role === "teacher" && userId ? { teacherId: userId } : {},
+          select: {
+            id: true,
+            subject: { select: { name: true } },
+            class: { select: { name: true } },
+          },
+          orderBy: [{ class: { name: "asc" } }, { subject: { name: "asc" } }],
+        })
+      : Promise.resolve([]),
   ]);
+
+  const relatedData = canManage
+    ? {
+        classSubjects: classSubjects.map((item) => ({
+          value: item.id,
+          label: `${item.subject.name} · ${item.class.name}`,
+        })),
+      }
+    : undefined;
 
   const examsData: Exam[] = exams.map((exam) => ({
     id: exam.id,
-    subject: exam.lesson.subject.name,
-    class: exam.lesson.class.name,
-    teacher: `${exam.lesson.teacher.name} ${exam.lesson.teacher.surname}`,
+    title: exam.title,
+    subject: exam.classSubject.subject.name,
+    className: exam.classSubject.class.name,
     // Fixed locale so the output does not depend on the server's environment
     date: new Intl.DateTimeFormat("en-US").format(exam.startTime),
+    startTime: exam.startTime,
+    endTime: exam.endTime,
+    classSubjectId: exam.classSubjectId,
   }));
 
   const renderRow = (item: Exam) => (
@@ -154,14 +163,14 @@ const ExamListPage = async ({
       key={item.id}
       className="border-b border-gray-200 even:bg-slate-50 text-sm hover:bg-kamal-purple-light"
     >
-      <td className="flex items-center gap-4 p-4">{item.subject}</td>
-      <td>{item.class}</td>
-      <td className="hidden md:table-cell">{item.teacher}</td>
+      <td className="flex items-center gap-4 p-4">{item.title}</td>
+      <td className="hidden md:table-cell">{item.subject}</td>
+      <td>{item.className}</td>
       <td className="hidden md:table-cell">{item.date}</td>
-      {(role === "admin" || role === "teacher") && (
+      {canManage && (
         <td>
           <div className="flex items-center gap-2">
-            <FormModal table="exam" type="update" data={item} />
+            <FormModal table="exam" type="update" data={item} relatedData={relatedData} />
             <FormModal table="exam" type="delete" id={item.id} />
           </div>
         </td>
@@ -183,8 +192,12 @@ const ExamListPage = async ({
             <button className="w-8 h-8 flex items-center justify-center rounded-full bg-kamal-yellow">
               <Image src="/sort.png" alt="" width={14} height={14} />
             </button>
-            {(role === "admin" || role === "teacher") && (
-              <FormModal table="exam" type="create" />
+            {canManage && (
+              <FormModal
+                table="exam"
+                type="create"
+                relatedData={relatedData}
+              />
             )}
           </div>
         </div>

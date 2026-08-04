@@ -3,6 +3,7 @@ import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
 import { Prisma } from "@/lib/generated/prisma/client";
+import { requirePermission } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { applyRoleCondition, getRoleScope } from "@/lib/roleScope";
 import { ITEM_PER_PAGE } from "@/lib/settings";
@@ -15,6 +16,10 @@ type Parent = {
   students: string[];
   phone: string;
   address: string;
+  // Raw fields the update form needs.
+  username: string;
+  firstName: string;
+  surname: string;
 };
 
 const baseColumns = [
@@ -49,6 +54,7 @@ const ParentListPage = async ({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
+  await requirePermission("parents.view");
   const { role, classIds } = await getRoleScope();
   const { page: pageParam, ...queryParams } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
@@ -126,6 +132,9 @@ const ParentListPage = async ({
     students: parent.students.map((student) => student.name),
     phone: parent.phone,
     address: parent.address,
+    username: parent.username,
+    firstName: parent.name,
+    surname: parent.surname,
   }));
 
   const renderRow = (item: Parent) => (

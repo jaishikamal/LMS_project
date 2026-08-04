@@ -12,70 +12,13 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-const data = [
-  {
-    name: "Jan",
-    income: 4000,
-    expense: 2400,
-  },
-  {
-    name: "Feb",
-    income: 3000,
-    expense: 1398,
-  },
-  {
-    name: "Mar",
-    income: 2000,
-    expense: 9800,
-  },
-  {
-    name: "Apr",
-    income: 2780,
-    expense: 3908,
-  },
-  {
-    name: "May",
-    income: 1890,
-    expense: 4800,
-  },
-  {
-    name: "Jun",
-    income: 2390,
-    expense: 3800,
-  },
-  {
-    name: "Jul",
-    income: 3490,
-    expense: 4300,
-  },
-  {
-    name: "Aug",
-    income: 3490,
-    expense: 4300,
-  },
-  {
-    name: "Sep",
-    income: 3490,
-    expense: 4300,
-  },
-  {
-    name: "Oct",
-    income: 3490,
-    expense: 4300,
-  },
-  {
-    name: "Nov",
-    income: 3490,
-    expense: 4300,
-  },
-  {
-    name: "Dec",
-    income: 3490,
-    expense: 4300,
-  },
-];
+export type FinanceMonth = {
+  name: string;
+  income: number;
+  expense: number;
+};
 
-const FinanceChart = () => {
+const FinanceChart = ({ data }: { data: FinanceMonth[] }) => {
   return (
     <div className="bg-white rounded-xl w-full h-full p-4">
       <div className="flex justify-between items-center">

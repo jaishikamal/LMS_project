@@ -197,14 +197,14 @@ export type GradeWhereInput = {
   id?: Prisma.IntFilter<"Grade"> | number
   level?: Prisma.IntFilter<"Grade"> | number
   students?: Prisma.StudentListRelationFilter
-  classess?: Prisma.ClassListRelationFilter
+  classes?: Prisma.ClassListRelationFilter
 }
 
 export type GradeOrderByWithRelationInput = {
   id?: Prisma.SortOrder
   level?: Prisma.SortOrder
   students?: Prisma.StudentOrderByRelationAggregateInput
-  classess?: Prisma.ClassOrderByRelationAggregateInput
+  classes?: Prisma.ClassOrderByRelationAggregateInput
 }
 
 export type GradeWhereUniqueInput = Prisma.AtLeast<{
@@ -214,7 +214,7 @@ export type GradeWhereUniqueInput = Prisma.AtLeast<{
   OR?: Prisma.GradeWhereInput[]
   NOT?: Prisma.GradeWhereInput | Prisma.GradeWhereInput[]
   students?: Prisma.StudentListRelationFilter
-  classess?: Prisma.ClassListRelationFilter
+  classes?: Prisma.ClassListRelationFilter
 }, "id" | "level">
 
 export type GradeOrderByWithAggregationInput = {
@@ -238,27 +238,27 @@ export type GradeScalarWhereWithAggregatesInput = {
 export type GradeCreateInput = {
   level: number
   students?: Prisma.StudentCreateNestedManyWithoutGradeInput
-  classess?: Prisma.ClassCreateNestedManyWithoutGradeInput
+  classes?: Prisma.ClassCreateNestedManyWithoutGradeInput
 }
 
 export type GradeUncheckedCreateInput = {
   id?: number
   level: number
   students?: Prisma.StudentUncheckedCreateNestedManyWithoutGradeInput
-  classess?: Prisma.ClassUncheckedCreateNestedManyWithoutGradeInput
+  classes?: Prisma.ClassUncheckedCreateNestedManyWithoutGradeInput
 }
 
 export type GradeUpdateInput = {
   level?: Prisma.IntFieldUpdateOperationsInput | number
   students?: Prisma.StudentUpdateManyWithoutGradeNestedInput
-  classess?: Prisma.ClassUpdateManyWithoutGradeNestedInput
+  classes?: Prisma.ClassUpdateManyWithoutGradeNestedInput
 }
 
 export type GradeUncheckedUpdateInput = {
   id?: Prisma.IntFieldUpdateOperationsInput | number
   level?: Prisma.IntFieldUpdateOperationsInput | number
   students?: Prisma.StudentUncheckedUpdateManyWithoutGradeNestedInput
-  classess?: Prisma.ClassUncheckedUpdateManyWithoutGradeNestedInput
+  classes?: Prisma.ClassUncheckedUpdateManyWithoutGradeNestedInput
 }
 
 export type GradeCreateManyInput = {
@@ -319,29 +319,29 @@ export type GradeUpdateOneRequiredWithoutStudentsNestedInput = {
   update?: Prisma.XOR<Prisma.XOR<Prisma.GradeUpdateToOneWithWhereWithoutStudentsInput, Prisma.GradeUpdateWithoutStudentsInput>, Prisma.GradeUncheckedUpdateWithoutStudentsInput>
 }
 
-export type GradeCreateNestedOneWithoutClassessInput = {
-  create?: Prisma.XOR<Prisma.GradeCreateWithoutClassessInput, Prisma.GradeUncheckedCreateWithoutClassessInput>
-  connectOrCreate?: Prisma.GradeCreateOrConnectWithoutClassessInput
+export type GradeCreateNestedOneWithoutClassesInput = {
+  create?: Prisma.XOR<Prisma.GradeCreateWithoutClassesInput, Prisma.GradeUncheckedCreateWithoutClassesInput>
+  connectOrCreate?: Prisma.GradeCreateOrConnectWithoutClassesInput
   connect?: Prisma.GradeWhereUniqueInput
 }
 
-export type GradeUpdateOneRequiredWithoutClassessNestedInput = {
-  create?: Prisma.XOR<Prisma.GradeCreateWithoutClassessInput, Prisma.GradeUncheckedCreateWithoutClassessInput>
-  connectOrCreate?: Prisma.GradeCreateOrConnectWithoutClassessInput
-  upsert?: Prisma.GradeUpsertWithoutClassessInput
+export type GradeUpdateOneRequiredWithoutClassesNestedInput = {
+  create?: Prisma.XOR<Prisma.GradeCreateWithoutClassesInput, Prisma.GradeUncheckedCreateWithoutClassesInput>
+  connectOrCreate?: Prisma.GradeCreateOrConnectWithoutClassesInput
+  upsert?: Prisma.GradeUpsertWithoutClassesInput
   connect?: Prisma.GradeWhereUniqueInput
-  update?: Prisma.XOR<Prisma.XOR<Prisma.GradeUpdateToOneWithWhereWithoutClassessInput, Prisma.GradeUpdateWithoutClassessInput>, Prisma.GradeUncheckedUpdateWithoutClassessInput>
+  update?: Prisma.XOR<Prisma.XOR<Prisma.GradeUpdateToOneWithWhereWithoutClassesInput, Prisma.GradeUpdateWithoutClassesInput>, Prisma.GradeUncheckedUpdateWithoutClassesInput>
 }
 
 export type GradeCreateWithoutStudentsInput = {
   level: number
-  classess?: Prisma.ClassCreateNestedManyWithoutGradeInput
+  classes?: Prisma.ClassCreateNestedManyWithoutGradeInput
 }
 
 export type GradeUncheckedCreateWithoutStudentsInput = {
   id?: number
   level: number
-  classess?: Prisma.ClassUncheckedCreateNestedManyWithoutGradeInput
+  classes?: Prisma.ClassUncheckedCreateNestedManyWithoutGradeInput
 }
 
 export type GradeCreateOrConnectWithoutStudentsInput = {
@@ -362,48 +362,48 @@ export type GradeUpdateToOneWithWhereWithoutStudentsInput = {
 
 export type GradeUpdateWithoutStudentsInput = {
   level?: Prisma.IntFieldUpdateOperationsInput | number
-  classess?: Prisma.ClassUpdateManyWithoutGradeNestedInput
+  classes?: Prisma.ClassUpdateManyWithoutGradeNestedInput
 }
 
 export type GradeUncheckedUpdateWithoutStudentsInput = {
   id?: Prisma.IntFieldUpdateOperationsInput | number
   level?: Prisma.IntFieldUpdateOperationsInput | number
-  classess?: Prisma.ClassUncheckedUpdateManyWithoutGradeNestedInput
+  classes?: Prisma.ClassUncheckedUpdateManyWithoutGradeNestedInput
 }
 
-export type GradeCreateWithoutClassessInput = {
+export type GradeCreateWithoutClassesInput = {
   level: number
   students?: Prisma.StudentCreateNestedManyWithoutGradeInput
 }
 
-export type GradeUncheckedCreateWithoutClassessInput = {
+export type GradeUncheckedCreateWithoutClassesInput = {
   id?: number
   level: number
   students?: Prisma.StudentUncheckedCreateNestedManyWithoutGradeInput
 }
 
-export type GradeCreateOrConnectWithoutClassessInput = {
+export type GradeCreateOrConnectWithoutClassesInput = {
   where: Prisma.GradeWhereUniqueInput
-  create: Prisma.XOR<Prisma.GradeCreateWithoutClassessInput, Prisma.GradeUncheckedCreateWithoutClassessInput>
+  create: Prisma.XOR<Prisma.GradeCreateWithoutClassesInput, Prisma.GradeUncheckedCreateWithoutClassesInput>
 }
 
-export type GradeUpsertWithoutClassessInput = {
-  update: Prisma.XOR<Prisma.GradeUpdateWithoutClassessInput, Prisma.GradeUncheckedUpdateWithoutClassessInput>
-  create: Prisma.XOR<Prisma.GradeCreateWithoutClassessInput, Prisma.GradeUncheckedCreateWithoutClassessInput>
+export type GradeUpsertWithoutClassesInput = {
+  update: Prisma.XOR<Prisma.GradeUpdateWithoutClassesInput, Prisma.GradeUncheckedUpdateWithoutClassesInput>
+  create: Prisma.XOR<Prisma.GradeCreateWithoutClassesInput, Prisma.GradeUncheckedCreateWithoutClassesInput>
   where?: Prisma.GradeWhereInput
 }
 
-export type GradeUpdateToOneWithWhereWithoutClassessInput = {
+export type GradeUpdateToOneWithWhereWithoutClassesInput = {
   where?: Prisma.GradeWhereInput
-  data: Prisma.XOR<Prisma.GradeUpdateWithoutClassessInput, Prisma.GradeUncheckedUpdateWithoutClassessInput>
+  data: Prisma.XOR<Prisma.GradeUpdateWithoutClassesInput, Prisma.GradeUncheckedUpdateWithoutClassesInput>
 }
 
-export type GradeUpdateWithoutClassessInput = {
+export type GradeUpdateWithoutClassesInput = {
   level?: Prisma.IntFieldUpdateOperationsInput | number
   students?: Prisma.StudentUpdateManyWithoutGradeNestedInput
 }
 
-export type GradeUncheckedUpdateWithoutClassessInput = {
+export type GradeUncheckedUpdateWithoutClassesInput = {
   id?: Prisma.IntFieldUpdateOperationsInput | number
   level?: Prisma.IntFieldUpdateOperationsInput | number
   students?: Prisma.StudentUncheckedUpdateManyWithoutGradeNestedInput
@@ -416,12 +416,12 @@ export type GradeUncheckedUpdateWithoutClassessInput = {
 
 export type GradeCountOutputType = {
   students: number
-  classess: number
+  classes: number
 }
 
 export type GradeCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   students?: boolean | GradeCountOutputTypeCountStudentsArgs
-  classess?: boolean | GradeCountOutputTypeCountClassessArgs
+  classes?: boolean | GradeCountOutputTypeCountClassesArgs
 }
 
 /**
@@ -444,7 +444,7 @@ export type GradeCountOutputTypeCountStudentsArgs<ExtArgs extends runtime.Types.
 /**
  * GradeCountOutputType without action
  */
-export type GradeCountOutputTypeCountClassessArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+export type GradeCountOutputTypeCountClassesArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   where?: Prisma.ClassWhereInput
 }
 
@@ -453,7 +453,7 @@ export type GradeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = 
   id?: boolean
   level?: boolean
   students?: boolean | Prisma.Grade$studentsArgs<ExtArgs>
-  classess?: boolean | Prisma.Grade$classessArgs<ExtArgs>
+  classes?: boolean | Prisma.Grade$classesArgs<ExtArgs>
   _count?: boolean | Prisma.GradeCountOutputTypeDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["grade"]>
 
@@ -475,7 +475,7 @@ export type GradeSelectScalar = {
 export type GradeOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "level", ExtArgs["result"]["grade"]>
 export type GradeInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   students?: boolean | Prisma.Grade$studentsArgs<ExtArgs>
-  classess?: boolean | Prisma.Grade$classessArgs<ExtArgs>
+  classes?: boolean | Prisma.Grade$classesArgs<ExtArgs>
   _count?: boolean | Prisma.GradeCountOutputTypeDefaultArgs<ExtArgs>
 }
 export type GradeIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {}
@@ -485,7 +485,7 @@ export type $GradePayload<ExtArgs extends runtime.Types.Extensions.InternalArgs 
   name: "Grade"
   objects: {
     students: Prisma.$StudentPayload<ExtArgs>[]
-    classess: Prisma.$ClassPayload<ExtArgs>[]
+    classes: Prisma.$ClassPayload<ExtArgs>[]
   }
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: number
@@ -885,7 +885,7 @@ readonly fields: GradeFieldRefs;
 export interface Prisma__GradeClient<T, Null = never, ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs, GlobalOmitOptions = {}> extends Prisma.PrismaPromise<T> {
   readonly [Symbol.toStringTag]: "PrismaPromise"
   students<T extends Prisma.Grade$studentsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Grade$studentsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$StudentPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
-  classess<T extends Prisma.Grade$classessArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Grade$classessArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$ClassPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
+  classes<T extends Prisma.Grade$classesArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Grade$classesArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$ClassPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
    * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -1334,9 +1334,9 @@ export type Grade$studentsArgs<ExtArgs extends runtime.Types.Extensions.Internal
 }
 
 /**
- * Grade.classess
+ * Grade.classes
  */
-export type Grade$classessArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+export type Grade$classesArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   /**
    * Select specific fields to fetch from the Class
    */

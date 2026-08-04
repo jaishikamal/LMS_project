@@ -1,10 +1,8 @@
 import Announcements from "@/components/Announcements";
-import BigCalendar from "@/components/BigCalender";
 import FormModal from "@/components/FormModal";
 import Performance from "@/components/Performance";
-import { getRole } from "@/lib/auth";
+import { getRole, requirePermission } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import { getScheduleEvents } from "@/lib/schedule";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -14,6 +12,7 @@ const SingleTeacherPage = async ({
 }: {
   params: Promise<{ id: string }>;
 }) => {
+  await requirePermission("teachers.view");
   const { id } = await params;
   const role = await getRole();
 
@@ -22,26 +21,32 @@ const SingleTeacherPage = async ({
     include: {
       subjects: { select: { id: true, name: true } },
       classes: { select: { id: true, name: true } },
-      _count: { select: { lessons: true, classes: true, subjects: true } },
+      classSubjects: {
+        select: {
+          id: true,
+          subject: { select: { name: true } },
+          class: { select: { id: true, name: true } },
+        },
+        orderBy: [{ class: { name: "asc" } }, { subject: { name: "asc" } }],
+      },
+      _count: { select: { classes: true, subjects: true } },
     },
   });
 
   if (!teacher) notFound();
 
-  // Classes reached through lessons, not just the ones they supervise.
-  const taughtClasses = await prisma.class.findMany({
-    where: { lessons: { some: { teacherId: id } } },
-    select: { id: true },
-  });
-  const classIds = Array.from(
-    new Set([...taughtClasses.map((c) => c.id), ...teacher.classes.map((c) => c.id)])
-  );
+  // Classes the teacher supervises plus classes they teach a subject in.
+  const classIds = [
+    ...new Set([
+      ...teacher.classes.map((c) => c.id),
+      ...teacher.classSubjects.map((cs) => cs.class.id),
+    ]),
+  ];
 
-  const [studentCount, scheduleEvents, announcements, allSubjects] =
+  const [studentCount, examCount, announcements, allSubjects] =
     await Promise.all([
       prisma.student.count({ where: { classId: { in: classIds } } }),
-      // This teacher's schedule is the lessons they personally teach.
-      getScheduleEvents({ teacherId: id }),
+      prisma.exam.count({ where: { classSubject: { teacherId: id } } }),
       prisma.announcement.findMany({
         where: { OR: [{ classId: null }, { classId: { in: classIds } }] },
         orderBy: { date: "desc" },
@@ -169,17 +174,15 @@ const SingleTeacherPage = async ({
             {/* CARD */}
             <div className="bg-white p-4 rounded-md flex gap-4 w-full md:w-[48%] xl:w-[45%] 2xl:w-[48%]">
               <Image
-                src="/singleLesson.png"
+                src="/singleBranch.png"
                 alt=""
                 width={24}
                 height={24}
                 className="w-6 h-6"
               />
               <div className="">
-                <h1 className="text-xl font-semibold">
-                  {teacher._count.lessons}
-                </h1>
-                <span className="text-sm text-gray-400">Lessons</span>
+                <h1 className="text-xl font-semibold">{examCount}</h1>
+                <span className="text-sm text-gray-400">Exams</span>
               </div>
             </div>
             {/* CARD */}
@@ -213,9 +216,46 @@ const SingleTeacherPage = async ({
           </div>
         </div>
         {/* BOTTOM */}
-        <div className="mt-4 bg-white rounded-md p-4 h-[800px]">
-          <h1>Teacher&apos;s Schedule</h1>
-          <BigCalendar events={scheduleEvents} />
+        <div className="mt-4 bg-white rounded-md p-4">
+          <h1 className="text-xl font-semibold">Supervised Classes</h1>
+          {teacher.classes.length === 0 ? (
+            <p className="text-sm text-gray-400 mt-2">
+              This teacher does not supervise any classes.
+            </p>
+          ) : (
+            <ul className="mt-2 divide-y divide-gray-200">
+              {teacher.classes.map((classItem) => (
+                <li
+                  key={classItem.id}
+                  className="flex items-center justify-between py-3 text-sm"
+                >
+                  <span className="font-medium">{classItem.name}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="mt-4 bg-white rounded-md p-4">
+          <h1 className="text-xl font-semibold">Taught Subjects</h1>
+          {teacher.classSubjects.length === 0 ? (
+            <p className="text-sm text-gray-400 mt-2">
+              This teacher does not teach any class subjects yet.
+            </p>
+          ) : (
+            <ul className="mt-2 divide-y divide-gray-200">
+              {teacher.classSubjects.map((classSubject) => (
+                <li
+                  key={classSubject.id}
+                  className="flex items-center justify-between py-3 text-sm"
+                >
+                  <span className="font-medium">{classSubject.subject.name}</span>
+                  <span className="text-xs text-gray-500">
+                    {classSubject.class.name}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
       {/* RIGHT */}
@@ -237,12 +277,6 @@ const SingleTeacherPage = async ({
             </Link>
             <Link
               className="p-3 rounded-md bg-kamal-yellow-light"
-              href={`/list/lessons?teacherId=${teacher.id}`}
-            >
-              Teacher&apos;s Lessons
-            </Link>
-            <Link
-              className="p-3 rounded-md bg-pink-50"
               href={`/list/exams?teacherId=${teacher.id}`}
             >
               Teacher&apos;s Exams

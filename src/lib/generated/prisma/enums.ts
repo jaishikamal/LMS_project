@@ -15,14 +15,3 @@ export const UserSex = {
 } as const
 
 export type UserSex = (typeof UserSex)[keyof typeof UserSex]
-
-
-export const Day = {
-  MONDAY: 'MONDAY',
-  TUESDAY: 'TUESDAY',
-  WEDNESDAY: 'WEDNESDAY',
-  THURSDAY: 'THURSDAY',
-  FRIDAY: 'FRIDAY'
-} as const
-
-export type Day = (typeof Day)[keyof typeof Day]

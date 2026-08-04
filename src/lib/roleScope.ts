@@ -18,7 +18,8 @@ export type RoleScope = {
  * Computes the data scope for the current session so list pages can filter
  * Prisma queries by role:
  *  - admin: unrestricted (classIds/studentIds are null)
- *  - teacher: their own classes/lessons and the students in them
+ *  - teacher: the classes they supervise or teach a subject in (ClassSubject)
+ *    and the students in them
  *  - student: their own class and themselves
  *  - parent: their children's classes and their children
  */
@@ -30,19 +31,20 @@ export const getRoleScope = async (): Promise<RoleScope> => {
   }
 
   if (role === "teacher") {
-    const [lessons, supervised] = await Promise.all([
-      prisma.lesson.findMany({
-        where: { teacherId: userId },
-        select: { classId: true },
-        distinct: ["classId"],
-      }),
+    // A teacher's classes are the ones they supervise (homeroom) plus the
+    // classes where they teach a subject (via ClassSubject).
+    const [supervised, taught] = await Promise.all([
       prisma.class.findMany({
         where: { supervisorId: userId },
         select: { id: true },
       }),
+      prisma.classSubject.findMany({
+        where: { teacherId: userId },
+        select: { classId: true },
+      }),
     ]);
     const classIds = Array.from(
-      new Set([...lessons.map((l) => l.classId), ...supervised.map((c) => c.id)])
+      new Set([...supervised.map((c) => c.id), ...taught.map((c) => c.classId)])
     );
     const students = classIds.length
       ? await prisma.student.findMany({

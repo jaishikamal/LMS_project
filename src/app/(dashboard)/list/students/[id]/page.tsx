@@ -1,10 +1,8 @@
 import Announcements from "@/components/Announcements";
-import BigCalendar from "@/components/BigCalender";
 import FormModal from "@/components/FormModal";
 import Performance from "@/components/Performance";
-import { getRole } from "@/lib/auth";
+import { getRole, requirePermission } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import { getScheduleEvents } from "@/lib/schedule";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -14,13 +12,14 @@ const SingleStudentPage = async ({
 }: {
   params: Promise<{ id: string }>;
 }) => {
+  await requirePermission("students.view");
   const { id } = await params;
   const role = await getRole();
 
   const student = await prisma.student.findUnique({
     where: { id },
     include: {
-      class: { select: { id: true, name: true, _count: { select: { lessons: true } } } },
+      class: { select: { id: true, name: true } },
       grade: { select: { id: true, level: true } },
       parent: { select: { id: true, name: true, surname: true } },
       _count: { select: { attendances: true, results: true } },
@@ -29,11 +28,9 @@ const SingleStudentPage = async ({
 
   if (!student) notFound();
 
-  const [presentCount, scheduleEvents, announcements, grades, classes, parents] =
+  const [presentCount, announcements, grades, classes, parents, recentResults] =
     await Promise.all([
       prisma.attendance.count({ where: { studentId: id, present: true } }),
-      // A student's schedule is every lesson taught to their class.
-      getScheduleEvents({ classId: student.classId }),
       prisma.announcement.findMany({
         where: { OR: [{ classId: null }, { classId: student.classId }] },
         orderBy: { date: "desc" },
@@ -52,6 +49,37 @@ const SingleStudentPage = async ({
           orderBy: { name: "asc" },
         })
         : Promise.resolve([]),
+      prisma.result.findMany({
+        where: { studentId: id },
+        select: {
+          id: true,
+          score: true,
+          exam: {
+            select: {
+              title: true,
+              classSubject: {
+                select: {
+                  subject: { select: { name: true } },
+                  class: { select: { name: true } },
+                },
+              },
+            },
+          },
+          assignment: {
+            select: {
+              title: true,
+              classSubject: {
+                select: {
+                  subject: { select: { name: true } },
+                  class: { select: { name: true } },
+                },
+              },
+            },
+          },
+        },
+        orderBy: { id: "desc" },
+        take: 5,
+      }),
     ]);
 
   // Only show a percentage when there's attendance to base it on, rather than
@@ -198,7 +226,7 @@ const SingleStudentPage = async ({
             {/* CARD */}
             <div className="bg-white p-4 rounded-md flex gap-4 w-full md:w-[48%] xl:w-[45%] 2xl:w-[48%]">
               <Image
-                src="/singleLesson.png"
+                src="/singleBranch.png"
                 alt=""
                 width={24}
                 height={24}
@@ -206,9 +234,9 @@ const SingleStudentPage = async ({
               />
               <div className="">
                 <h1 className="text-xl font-semibold">
-                  {student.class._count.lessons}
+                  {student._count.results}
                 </h1>
-                <span className="text-sm text-gray-400">Lessons</span>
+                <span className="text-sm text-gray-400">Results</span>
               </div>
             </div>
             {/* CARD */}
@@ -228,9 +256,33 @@ const SingleStudentPage = async ({
           </div>
         </div>
         {/* BOTTOM */}
-        <div className="mt-4 bg-white rounded-md p-4 h-[800px]">
-          <h1>Student&apos;s Schedule</h1>
-          <BigCalendar events={scheduleEvents} />
+        <div className="mt-4 bg-white rounded-md p-4">
+          <h1 className="text-xl font-semibold">Recent Results</h1>
+          {recentResults.length === 0 ? (
+            <p className="text-sm text-gray-400 mt-2">No results yet.</p>
+          ) : (
+            <ul className="mt-2 divide-y divide-gray-200">
+              {recentResults.map((result) => {
+                const source = result.exam ?? result.assignment;
+                if (!source) return null;
+                return (
+                  <li
+                    key={result.id}
+                    className="flex items-center justify-between py-3 text-sm"
+                  >
+                    <div>
+                      <span className="font-medium">{source.title}</span>
+                      <span className="text-xs text-gray-400 ml-2">
+                        {source.classSubject.subject.name} ·{" "}
+                        {source.classSubject.class.name}
+                      </span>
+                    </div>
+                    <span className="text-xs font-medium">{result.score}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
       </div>
       {/* RIGHT */}
@@ -238,12 +290,6 @@ const SingleStudentPage = async ({
         <div className="bg-white p-4 rounded-md">
           <h1 className="text-xl font-semibold">Shortcuts</h1>
           <div className="mt-4 flex gap-4 flex-wrap text-xs text-gray-500">
-            <Link
-              className="p-3 rounded-md bg-kamal-sky-light"
-              href={`/list/lessons?classId=${student.classId}`}
-            >
-              Student&apos;s Lessons
-            </Link>
             <Link
               className="p-3 rounded-md bg-kamal-purple-light"
               href={`/list/teachers?studentId=${student.id}`}

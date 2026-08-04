@@ -52,6 +52,11 @@ export type Admin = Prisma.AdminModel
  */
 export type Student = Prisma.StudentModel
 /**
+ * Model Guardian
+ * 
+ */
+export type Guardian = Prisma.GuardianModel
+/**
  * Model Teacher
  * 
  */
@@ -77,10 +82,10 @@ export type Class = Prisma.ClassModel
  */
 export type Subject = Prisma.SubjectModel
 /**
- * Model Lesson
+ * Model ClassSubject
  * 
  */
-export type Lesson = Prisma.LessonModel
+export type ClassSubject = Prisma.ClassSubjectModel
 /**
  * Model Exam
  * 
@@ -111,3 +116,108 @@ export type Event = Prisma.EventModel
  * 
  */
 export type Announcement = Prisma.AnnouncementModel
+/**
+ * Model Period
+ * 
+ */
+export type Period = Prisma.PeriodModel
+/**
+ * Model TimetableSlot
+ * 
+ */
+export type TimetableSlot = Prisma.TimetableSlotModel
+/**
+ * Model Lesson
+ * 
+ */
+export type Lesson = Prisma.LessonModel
+/**
+ * Model LogbookEntry
+ * 
+ */
+export type LogbookEntry = Prisma.LogbookEntryModel
+/**
+ * Model Staff
+ * 
+ */
+export type Staff = Prisma.StaffModel
+/**
+ * Model StaffAttendance
+ * 
+ */
+export type StaffAttendance = Prisma.StaffAttendanceModel
+/**
+ * Model StaffPerformance
+ * 
+ */
+export type StaffPerformance = Prisma.StaffPerformanceModel
+/**
+ * Model FeeItem
+ * 
+ */
+export type FeeItem = Prisma.FeeItemModel
+/**
+ * Model Invoice
+ * 
+ */
+export type Invoice = Prisma.InvoiceModel
+/**
+ * Model Payment
+ * 
+ */
+export type Payment = Prisma.PaymentModel
+/**
+ * Model SalaryRecord
+ * 
+ */
+export type SalaryRecord = Prisma.SalaryRecordModel
+/**
+ * Model Expense
+ * 
+ */
+export type Expense = Prisma.ExpenseModel
+/**
+ * Model Notification
+ * 
+ */
+export type Notification = Prisma.NotificationModel
+/**
+ * Model NotificationRead
+ * 
+ */
+export type NotificationRead = Prisma.NotificationReadModel
+/**
+ * Model Message
+ * 
+ */
+export type Message = Prisma.MessageModel
+/**
+ * Model InventoryItem
+ * 
+ */
+export type InventoryItem = Prisma.InventoryItemModel
+/**
+ * Model InventoryIssue
+ * 
+ */
+export type InventoryIssue = Prisma.InventoryIssueModel
+/**
+ * Model Setting
+ * 
+ */
+export type Setting = Prisma.SettingModel
+/**
+ * Model AuditLog
+ * 
+ */
+export type AuditLog = Prisma.AuditLogModel
+/**
+ * Model Permission
+ * 
+ */
+export type Permission = Prisma.PermissionModel
+/**
+ * Model RolePermission
+ * 
+ */
+export type RolePermission = Prisma.RolePermissionModel

@@ -3,6 +3,7 @@ import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
 import { Prisma } from "@/lib/generated/prisma/client";
+import { requirePermission } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { applyRoleCondition, getRoleScope } from "@/lib/roleScope";
 import { ITEM_PER_PAGE } from "@/lib/settings";
@@ -10,30 +11,34 @@ import Image from "next/image";
 
 type Assignment = {
   id: number;
+  title: string;
   subject: string;
-  class: string;
-  teacher: string;
+  className: string;
   dueDate: string;
+  // Raw fields the update form needs.
+  startDate: Date;
+  dueDateAt: Date;
+  classSubjectId: number;
 };
 
 const baseColumns = [
   {
-    header: "Subject Name",
-    accessor: "name",
+    header: "Title",
+    accessor: "title",
+  },
+  {
+    header: "Subject",
+    accessor: "subject",
+    className: "hidden md:table-cell",
   },
   {
     header: "Class",
-    accessor: "class",
-  },
-  {
-    header: "Teacher",
-    accessor: "teacher",
-    className: "hidden md:table-cell",
+    accessor: "className",
   },
   {
     header: "Due Date",
     accessor: "dueDate",
-    className: "hidden md:table-cell",
+    className: "hidden lg:table-cell",
   },
 ];
 
@@ -47,25 +52,23 @@ const AssignmentListPage = async ({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) => {
+  await requirePermission("assignments.view");
   const { role, userId, classIds } = await getRoleScope();
   const { page: pageParam, ...queryParams } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
 
-  const columns =
-    role === "admin" || role === "teacher"
-      ? [...baseColumns, actionColumn]
-      : baseColumns;
+  const canManage = role === "admin" || role === "teacher";
+  const columns = canManage ? [...baseColumns, actionColumn] : baseColumns;
 
   const query: Prisma.AssignmentWhereInput = {};
-  const lessonFilter: Prisma.LessonWhereInput = {};
 
-  // Kept separate and AND-merged after the loop so a `teacherId`/`classId`
-  // query param can't override the role-based scoping.
-  const roleCondition: Prisma.LessonWhereInput | null =
+  // Kept separate and AND-merged after the loop so a `classId` query param
+  // can't override the role-based scoping.
+  const roleCondition: Prisma.AssignmentWhereInput | null =
     role === "teacher" && userId
-      ? { teacherId: userId }
+      ? { classSubject: { teacherId: userId } }
       : (role === "student" || role === "parent") && classIds
-        ? { classId: { in: classIds } }
+        ? { classSubject: { class: { id: { in: classIds } } } }
         : null;
 
   for (const [rawKey, value] of Object.entries(queryParams)) {
@@ -74,35 +77,25 @@ const AssignmentListPage = async ({
     if (!param) continue;
 
     switch (rawKey.toLowerCase()) {
-      case "teacherid":
-        lessonFilter.teacherId = param;
-        break;
       case "classid": {
         const classId = Number(param);
         if (!Number.isInteger(classId)) break;
-        lessonFilter.classId = classId;
+        query.classSubject = { classId };
         break;
       }
-      case "subjectid": {
-        const subjectId = Number(param);
-        if (!Number.isInteger(subjectId)) break;
-        lessonFilter.subjectId = subjectId;
+      case "teacherid":
+        query.classSubject = { teacherId: param };
         break;
-      }
       case "studentid":
-        lessonFilter.class = {
-          students: {
-            some: { id: param },
-          },
+        query.classSubject = {
+          class: { students: { some: { id: param } } },
         };
         break;
       case "search":
         query.OR = [
           { title: { contains: param, mode: "insensitive" } },
-          { lesson: { subject: { name: { contains: param, mode: "insensitive" } } } },
-          { lesson: { class: { name: { contains: param, mode: "insensitive" } } } },
-          { lesson: { teacher: { name: { contains: param, mode: "insensitive" } } } },
-          { lesson: { teacher: { surname: { contains: param, mode: "insensitive" } } } },
+          { classSubject: { subject: { name: { contains: param, mode: "insensitive" } } } },
+          { classSubject: { class: { name: { contains: param, mode: "insensitive" } } } },
         ];
         break;
       default:
@@ -110,24 +103,19 @@ const AssignmentListPage = async ({
     }
   }
 
-  applyRoleCondition(lessonFilter, roleCondition);
-
-  if (Object.keys(lessonFilter).length > 0) {
-    query.lesson = lessonFilter;
-  }
+  applyRoleCondition(query, roleCondition);
 
   // Independent read-only queries: Promise.all avoids the interactive
   // transaction timeout that $transaction([...]) would impose on a remote
   // pooled connection.
-  const [assignments, count] = await Promise.all([
+  const [assignments, count, classSubjects] = await Promise.all([
     prisma.assignment.findMany({
       where: query,
       include: {
-        lesson: {
+        classSubject: {
           select: {
             subject: { select: { name: true } },
             class: { select: { name: true } },
-            teacher: { select: { name: true, surname: true } },
           },
         },
       },
@@ -136,14 +124,37 @@ const AssignmentListPage = async ({
       skip: ITEM_PER_PAGE * (page - 1),
     }),
     prisma.assignment.count({ where: query }),
+    canManage
+      ? prisma.classSubject.findMany({
+          where: role === "teacher" && userId ? { teacherId: userId } : {},
+          select: {
+            id: true,
+            subject: { select: { name: true } },
+            class: { select: { name: true } },
+          },
+          orderBy: [{ class: { name: "asc" } }, { subject: { name: "asc" } }],
+        })
+      : Promise.resolve([]),
   ]);
+
+  const relatedData = canManage
+    ? {
+        classSubjects: classSubjects.map((item) => ({
+          value: item.id,
+          label: `${item.subject.name} · ${item.class.name}`,
+        })),
+      }
+    : undefined;
 
   const assignmentsData: Assignment[] = assignments.map((assignment) => ({
     id: assignment.id,
-    subject: assignment.lesson.subject.name,
-    class: assignment.lesson.class.name,
-    teacher: `${assignment.lesson.teacher.name} ${assignment.lesson.teacher.surname}`,
+    title: assignment.title,
+    subject: assignment.classSubject.subject.name,
+    className: assignment.classSubject.class.name,
     dueDate: new Intl.DateTimeFormat("en-US").format(assignment.dueDate),
+    startDate: assignment.startDate,
+    dueDateAt: assignment.dueDate,
+    classSubjectId: assignment.classSubjectId,
   }));
 
   const renderRow = (item: Assignment) => (
@@ -151,14 +162,24 @@ const AssignmentListPage = async ({
       key={item.id}
       className="border-b border-gray-200 even:bg-slate-50 text-sm hover:bg-kamal-purple-light"
     >
-      <td className="flex items-center gap-4 p-4">{item.subject}</td>
-      <td>{item.class}</td>
-      <td className="hidden md:table-cell">{item.teacher}</td>
-      <td className="hidden md:table-cell">{item.dueDate}</td>
-      {(role === "admin" || role === "teacher") && (
+      <td className="flex items-center gap-4 p-4">
+        <h3 className="font-semibold">{item.title}</h3>
+      </td>
+      <td className="hidden md:table-cell">{item.subject}</td>
+      <td>{item.className}</td>
+      <td className="hidden lg:table-cell">{item.dueDate}</td>
+      {canManage && (
         <td>
           <div className="flex items-center gap-2">
-            <FormModal table="assignment" type="update" data={item} />
+            <FormModal
+              table="assignment"
+              type="update"
+              data={{
+                ...item,
+                dueDate: item.dueDateAt,
+              }}
+              relatedData={relatedData}
+            />
             <FormModal table="assignment" type="delete" id={item.id} />
           </div>
         </td>
@@ -182,8 +203,12 @@ const AssignmentListPage = async ({
             <button className="w-8 h-8 flex items-center justify-center rounded-full bg-kamal-yellow">
               <Image src="/sort.png" alt="" width={14} height={14} />
             </button>
-            {(role === "admin" || role === "teacher") && (
-              <FormModal table="assignment" type="create" />
+            {canManage && (
+              <FormModal
+                table="assignment"
+                type="create"
+                relatedData={relatedData}
+              />
             )}
           </div>
         </div>
