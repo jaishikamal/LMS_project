@@ -105,6 +105,8 @@ const MessagePage = async () => {
     readAt: item.readAt,
   }));
 
+  const myName = accountLookup.get(`${role}:${userId}`) ?? "You";
+
   return (
     <div className="bg-white p-4 rounded-md flex-1 m-4 mt-0">
       <div className="flex items-center gap-2 mb-4">
@@ -116,6 +118,7 @@ const MessagePage = async () => {
       <MessageBoard
         myId={userId}
         myRole={role}
+        myName={myName}
         initialInbox={inboxData}
         initialOutbox={outboxData}
         recipients={recipients}

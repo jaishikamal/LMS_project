@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "react-toastify";
@@ -41,6 +40,16 @@ export type OutboxMessage = {
   subject: string;
   sentAt: Date;
   readAt: Date | null;
+};
+
+export type SocketMessage = {
+  id: number;
+  senderId: string;
+  senderRole: string;
+  senderName: string;
+  subject: string;
+  body: string;
+  sentAt: string;
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -126,17 +135,18 @@ const RoleBadge = ({ role }: { role: string }) => (
 const MessageBoard = ({
   myId,
   myRole,
+  myName,
   initialInbox,
   initialOutbox,
   recipients,
 }: {
   myId: string;
   myRole: string;
+  myName: string;
   initialInbox: InboxMessage[];
   initialOutbox: OutboxMessage[];
   recipients: MessageRecipient[];
 }) => {
-  const router = useRouter();
   const [tab, setTab] = useState<"inbox" | "sent" | "compose">("inbox");
   const [openId, setOpenId] = useState<number | null>(null);
   const [composeRole] = useState<string>("teacher");
@@ -149,6 +159,11 @@ const MessageBoard = ({
     success: false,
     error: null,
   });
+
+  // Local copies of the lists so messages appear instantly (sent or received)
+  // without a page reload; they stay in sync with the DB via the socket.
+  const [inbox, setInbox] = useState<InboxMessage[]>(initialInbox);
+  const [outbox, setOutbox] = useState<OutboxMessage[]>(initialOutbox);
 
   const {
     register,
@@ -182,14 +197,34 @@ const MessageBoard = ({
 
         socket.on("connect", () => setLive(true));
         socket.on("disconnect", () => setLive(false));
-        socket.on("message:new", (data: { subject?: string }) => {
-          if (data?.subject) {
-            toast.info(`New message: ${data.subject}`);
-          }
-          router.refresh();
+        socket.on("message:new", (data: SocketMessage) => {
+          if (!data || typeof data.id !== "number") return;
+          toast.info(`New message: ${data.subject}`);
+          setInbox((prev) =>
+            prev.some((m) => m.id === data.id)
+              ? prev
+              : [
+                  {
+                    id: data.id,
+                    senderId: data.senderId,
+                    senderRole: data.senderRole,
+                    senderName: data.senderName,
+                    subject: data.subject,
+                    body: data.body,
+                    sentAt: new Date(data.sentAt),
+                    readAt: null,
+                  },
+                  ...prev,
+                ]
+          );
         });
-        socket.on("message:read", () => {
-          router.refresh();
+        socket.on("message:read", (data: { id?: unknown }) => {
+          if (typeof data?.id !== "number") return;
+          setOutbox((prev) =>
+            prev.map((m) =>
+              m.id === data.id ? { ...m, readAt: new Date() } : m
+            )
+          );
         });
       } catch {
         // Socket unavailable — messaging still works via server actions.
@@ -203,12 +238,16 @@ const MessageBoard = ({
       socket?.disconnect();
       socketRef.current = null;
     };
-  }, [router]);
+  }, []);
 
   const handleOpen = (message: InboxMessage) => {
     setOpenId(openId === message.id ? null : message.id);
     setReplyText("");
     if (!message.readAt) {
+      // Optimistic local update so the badge/dimmed styling clears immediately.
+      setInbox((prev) =>
+        prev.map((m) => (m.id === message.id ? { ...m, readAt: new Date() } : m))
+      );
       startTransition(async () => {
         await markMessageRead(message.id);
         socketRef.current?.emit("message:read", {
@@ -216,7 +255,6 @@ const MessageBoard = ({
           senderId: message.senderId,
           senderRole: message.senderRole,
         });
-        router.refresh();
       });
     }
   };
@@ -237,16 +275,36 @@ const MessageBoard = ({
     const result = await sendMessage({ success: false, error: null }, values);
     setReplying(false);
     if (result.success) {
+      const created = result.data as {
+        id: number;
+        recipientId: string;
+        recipientRole: string;
+        subject: string;
+        body: string;
+        sentAt: Date;
+      };
+      const outboxItem: OutboxMessage = {
+        id: created.id,
+        recipientId: created.recipientId,
+        recipientRole: created.recipientRole,
+        recipientName:
+          recipients.find((r) => r.value === created.recipientId)?.label ??
+          created.recipientId,
+        subject: created.subject,
+        sentAt: created.sentAt,
+        readAt: null,
+      };
+      setOutbox((prev) => [outboxItem, ...prev]);
       socketRef.current?.emit("message:send", {
-        recipientId: values.recipientId,
-        recipientRole: values.recipientRole,
+        ...outboxItem,
         senderId: myId,
         senderRole: myRole,
-        subject: values.subject,
+        senderName: myName,
+        body: created.body,
+        sentAt: created.sentAt.toISOString(),
       });
       toast.success("Reply sent!");
       setReplyText("");
-      router.refresh();
     } else if (result.error) {
       toast.error(result.error);
     }
@@ -257,25 +315,45 @@ const MessageBoard = ({
       const result = await sendMessage(state, values);
       setState(result);
       if (result.success) {
+        const created = result.data as {
+          id: number;
+          recipientId: string;
+          recipientRole: string;
+          subject: string;
+          body: string;
+          sentAt: Date;
+        };
+        const outboxItem: OutboxMessage = {
+          id: created.id,
+          recipientId: created.recipientId,
+          recipientRole: created.recipientRole,
+          recipientName:
+            recipients.find((r) => r.value === created.recipientId)?.label ??
+            created.recipientId,
+          subject: created.subject,
+          sentAt: created.sentAt,
+          readAt: null,
+        };
+        setOutbox((prev) => [outboxItem, ...prev]);
         // Notify the recipient's open tab in real-time.
         socketRef.current?.emit("message:send", {
-          recipientId: values.recipientId,
-          recipientRole: values.recipientRole,
+          ...outboxItem,
           senderId: myId,
           senderRole: myRole,
-          subject: values.subject,
+          senderName: myName,
+          body: created.body,
+          sentAt: created.sentAt.toISOString(),
         });
         toast.success("Message sent!");
         reset();
         setTab("sent");
-        router.refresh();
       } else if (result.error) {
         toast.error(result.error);
       }
     });
   });
 
-  const unreadCount = initialInbox.filter((m) => !m.readAt).length;
+  const unreadCount = inbox.filter((m) => !m.readAt).length;
 
   const tabs: {
     key: "inbox" | "sent" | "compose";
@@ -331,7 +409,7 @@ const MessageBoard = ({
       {/* Inbox */}
       {tab === "inbox" && (
         <div className="flex flex-col gap-2.5">
-          {initialInbox.length === 0 ? (
+          {inbox.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <div className="w-16 h-16 rounded-2xl bg-kamal-sky-light flex items-center justify-center mb-3">
                 <Icon d={ICONS.inbox} className="w-8 h-8 text-kamal-sky" />
@@ -342,7 +420,7 @@ const MessageBoard = ({
               </p>
             </div>
           ) : (
-            initialInbox.map((message) => (
+            inbox.map((message) => (
               <div
                 key={message.id}
                 className={`rounded-2xl border shadow-sm transition-all overflow-hidden ${
@@ -425,7 +503,7 @@ const MessageBoard = ({
       {/* Sent */}
       {tab === "sent" && (
         <div className="flex flex-col gap-2.5">
-          {initialOutbox.length === 0 ? (
+          {outbox.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <div className="w-16 h-16 rounded-2xl bg-kamal-sky-light flex items-center justify-center mb-3">
                 <Icon d={ICONS.sent} className="w-8 h-8 text-kamal-sky" />
@@ -438,7 +516,7 @@ const MessageBoard = ({
               </p>
             </div>
           ) : (
-            initialOutbox.map((message) => (
+            outbox.map((message) => (
               <div
                 key={message.id}
                 className="flex items-center gap-3 bg-white rounded-2xl border border-gray-200 px-4 py-3 shadow-sm hover:border-kamal-purple/60 transition-all"

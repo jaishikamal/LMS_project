@@ -2230,9 +2230,19 @@ export const sendMessage = async (
         subject: data.subject,
         body: data.body,
       },
-      select: { id: true },
+      select: {
+        id: true,
+        senderId: true,
+        senderRole: true,
+        recipientId: true,
+        recipientRole: true,
+        subject: true,
+        body: true,
+        sentAt: true,
+      },
     });
     await logAudit("Message", created.id, "create", data.subject);
+    return { success: true, error: null, data: created };
   } catch (error) {
     return failure(describeError(error));
   }

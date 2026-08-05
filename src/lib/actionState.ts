@@ -8,4 +8,6 @@
 export type ActionState = {
   success: boolean;
   error: string | null;
+  /** Optional payload returned by the action (e.g. the created record). */
+  data?: unknown;
 };

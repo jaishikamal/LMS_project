@@ -7,6 +7,26 @@ import type { FeedNotification } from "./NotificationFeed";
 const Navbar = async () => {
   const { name, role, userId } = await getCurrentUser();
 
+  // Show the user's actual profile photo when one has been uploaded.
+  const profileImg = await (async () => {
+    if (!userId || !role) return "/avatar.png";
+    if (role === "teacher") {
+      const t = await prisma.teacher.findUnique({
+        where: { id: userId },
+        select: { img: true },
+      });
+      return t?.img || "/avatar.png";
+    }
+    if (role === "student") {
+      const s = await prisma.student.findUnique({
+        where: { id: userId },
+        select: { img: true },
+      });
+      return s?.img || "/avatar.png";
+    }
+    return "/avatar.png";
+  })();
+
   const [notifications, unreadMessages] = await Promise.all([
     role && userId
       ? prisma.notification.findMany({
@@ -46,11 +66,11 @@ const Navbar = async () => {
           </span>
         </div>
         <Image
-          src="/avatar.png"
+          src={profileImg}
           alt=""
           width={36}
           height={36}
-          className="rounded-full"
+          className="rounded-full object-cover"
         />
       </div>
     </div>

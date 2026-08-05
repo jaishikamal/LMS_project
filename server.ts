@@ -73,25 +73,28 @@ app.prepare().then(() => {
 
     // Real-time delivery: relay a sent message to the recipient's room. The
     // message itself is already persisted by the sendMessage server action;
-    // this just tells the recipient's open tab to refresh.
+    // the full payload lets the recipient's open tab show it with no reload.
     socket.on("message:send", (payload: unknown) => {
       const data = payload as {
         recipientId?: unknown;
+        id?: unknown;
         senderId?: unknown;
         senderRole?: unknown;
+        senderName?: unknown;
         subject?: unknown;
+        body?: unknown;
+        sentAt?: unknown;
       };
-      if (
-        typeof data?.recipientId !== "string" ||
-        typeof data?.senderId !== "string" ||
-        typeof data?.senderRole !== "string"
-      ) {
-        return;
-      }
+      if (typeof data?.recipientId !== "string") return;
       io.to(`user:${data.recipientId}`).emit("message:new", {
-        senderId: data.senderId,
-        senderRole: data.senderRole,
+        id: typeof data.id === "number" ? data.id : null,
+        senderId: typeof data.senderId === "string" ? data.senderId : "",
+        senderRole: typeof data.senderRole === "string" ? data.senderRole : "",
+        senderName:
+          typeof data.senderName === "string" ? data.senderName : "",
         subject: typeof data.subject === "string" ? data.subject : "",
+        body: typeof data.body === "string" ? data.body : "",
+        sentAt: typeof data.sentAt === "string" ? data.sentAt : "",
       });
     });
 
