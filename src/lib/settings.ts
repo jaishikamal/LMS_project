@@ -27,7 +27,12 @@ export type SchoolSettings = {
 
 /** Branding values with sensible fallbacks before Settings is customised. */
 export const getSchoolSettings = async (): Promise<SchoolSettings> => {
-  const map = await getSettings();
+  let map: Record<string, string> = {};
+  try {
+    map = await getSettings();
+  } catch {
+    // DB unavailable (e.g. mid-prerender) — fall back to the defaults below.
+  }
   return {
     schoolName: map.schoolName || "LMS",
     motto: map.motto ?? "",
