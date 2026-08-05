@@ -3,7 +3,7 @@
 import bcrypt from "bcryptjs";
 import { refresh, revalidatePath } from "next/cache";
 import type { ActionState } from "./actionState";
-import { getCurrentUser, requirePermission } from "./auth";
+import { getCurrentUser, requirePermission, requireRole } from "./auth";
 import {
   assignmentSchema,
   attendanceSchema,
@@ -69,7 +69,7 @@ import {
 import prisma from "./prisma";
 import { type PermissionKey } from "./permissions";
 import { getRoleScope } from "./roleScope";
-import { type Role } from "./roles";
+import { ROLES, type Role } from "./roles";
 
 /** Blank strings must become `null` so Prisma's nullable unique columns don't collide on "". */
 const nullIfBlank = (value: string | undefined) =>
@@ -2308,5 +2308,40 @@ export const toggleRolePermission = async (
   }
 
   revalidatePath("/list/permissions");
+  return { success: true, error: null };
+};
+
+// PROFILE -------------------------------------------------------------------
+
+export const updateProfileImage = async (img: string): Promise<ActionState> => {
+  const { userId, role } = await requireRole(ROLES);
+
+  const image = img.trim();
+  if (!image) return failure("An image URL is required.");
+
+  try {
+    switch (role) {
+      case "teacher":
+        await prisma.teacher.update({
+          where: { id: userId },
+          data: { img: image },
+        });
+        break;
+      case "student":
+        await prisma.student.update({
+          where: { id: userId },
+          data: { img: image },
+        });
+        break;
+      default:
+        return failure("This role does not support a profile photo.");
+    }
+    await logAudit("Profile", userId, "update", "img");
+  } catch (error) {
+    return failure(describeError(error));
+  }
+
+  revalidatePath("/profile");
+  refresh();
   return { success: true, error: null };
 };

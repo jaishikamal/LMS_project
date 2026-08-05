@@ -64,10 +64,29 @@ const MessagePage = async () => {
       })),
   ];
 
+  // Look up names for message senders/recipients by (role, id) so the inbox
+  // and sent views can show who the message is from / to.
+  const accountLookup = new Map<string, string>();
+  for (const a of admins) {
+    accountLookup.set(`admin:${a.id}`, `Admin · ${a.username}`);
+  }
+  for (const t of teachers) {
+    accountLookup.set(`teacher:${t.id}`, `${t.name} ${t.surname}`);
+  }
+  for (const s of students) {
+    accountLookup.set(`student:${s.id}`, `${s.name} ${s.surname}`);
+  }
+  for (const p of parents) {
+    accountLookup.set(`parent:${p.id}`, `${p.name} ${p.surname}`);
+  }
+
   const inboxData: InboxMessage[] = inbox.map((item) => ({
     id: item.id,
     senderId: item.senderId,
     senderRole: item.senderRole,
+    senderName:
+      accountLookup.get(`${item.senderRole}:${item.senderId}`) ??
+      item.senderId,
     subject: item.subject,
     body: item.body,
     sentAt: item.sentAt,
@@ -78,6 +97,9 @@ const MessagePage = async () => {
     id: item.id,
     recipientId: item.recipientId,
     recipientRole: item.recipientRole,
+    recipientName:
+      accountLookup.get(`${item.recipientRole}:${item.recipientId}`) ??
+      item.recipientId,
     subject: item.subject,
     sentAt: item.sentAt,
     readAt: item.readAt,

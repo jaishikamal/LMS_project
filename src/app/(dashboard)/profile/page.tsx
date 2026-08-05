@@ -1,11 +1,11 @@
 import Image from "next/image";
+import ProfileAvatarUpload from "@/components/ProfileAvatarUpload";
 import { requirePermission } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { roleLabel } from "@/lib/permissions";
 import type { Role } from "@/lib/roles";
 
-const fieldClass = "flex flex-col gap-1 bg-kamal-sky-light p-4 rounded-md";
-const fieldLabel = "text-xs text-gray-500 font-medium";
+const fieldLabel = "text-xs text-gray-400 font-medium";
 const fieldValue = "text-sm font-semibold text-gray-800";
 
 type Profile =
@@ -18,6 +18,7 @@ type Profile =
       username: string;
       name: string;
       surname: string;
+      img: string | null;
       email: string | null;
       phone: string | null;
       address: string;
@@ -30,6 +31,7 @@ type Profile =
       username: string;
       name: string;
       surname: string;
+      img: string | null;
       email: string | null;
       phone: string | null;
       address: string;
@@ -71,6 +73,7 @@ const ProfilePage = async () => {
             username: true,
             name: true,
             surname: true,
+            img: true,
             email: true,
             phone: true,
             address: true,
@@ -85,6 +88,7 @@ const ProfilePage = async () => {
               username: row.username,
               name: row.name,
               surname: row.surname,
+              img: row.img,
               email: row.email,
               phone: row.phone,
               address: row.address,
@@ -101,6 +105,7 @@ const ProfilePage = async () => {
             username: true,
             name: true,
             surname: true,
+            img: true,
             email: true,
             phone: true,
             address: true,
@@ -118,6 +123,7 @@ const ProfilePage = async () => {
               username: row.username,
               name: row.name,
               surname: row.surname,
+              img: row.img,
               email: row.email,
               phone: row.phone,
               address: row.address,
@@ -182,149 +188,189 @@ const ProfilePage = async () => {
 
   const dateFormat = new Intl.DateTimeFormat("en-US");
 
+  const FIELD_ICONS: Record<string, string> = {
+    name: "/profile.png",
+    username: "/profile.png",
+    email: "/mail.png",
+    phone: "/phone.png",
+    address: "/singleBranch.png",
+    blood: "/blood.png",
+    gender: "/maleFemale.png",
+    birthday: "/calendar.png",
+    class: "/singleClass.png",
+    grade: "/class.png",
+    parent: "/parent.png",
+    children: "/parent.png",
+  };
+
+  const Field = ({
+    icon,
+    label,
+    value,
+  }: {
+    icon: string;
+    label: string;
+    value: string;
+  }) => (
+    <div className="flex items-center gap-4 bg-white rounded-xl border border-gray-100 p-4 shadow-sm hover:shadow-md hover:border-kamal-purple/50 hover:-translate-y-0.5 transition-all">
+      <div className="w-11 h-11 rounded-xl bg-kamal-purple-light flex items-center justify-center shrink-0">
+        <Image src={icon} alt="" width={22} height={22} />
+      </div>
+      <div className="flex flex-col min-w-0">
+        <span className={fieldLabel}>{label}</span>
+        <span className={`${fieldValue} truncate`}>{value}</span>
+      </div>
+    </div>
+  );
+
+  const gridClass = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4";
+
   const renderFields = () => {
     if (profile.role === "admin") {
       return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className={fieldClass}>
-            <span className={fieldLabel}>Username</span>
-            <span className={fieldValue}>{profile.username}</span>
-          </div>
+        <div className={gridClass}>
+          <Field
+            icon={FIELD_ICONS.username}
+            label="Username"
+            value={profile.username}
+          />
         </div>
       );
     }
 
     if (profile.role === "teacher" || profile.role === "student") {
       const isStudent = profile.role === "student";
+      const fields = [
+        {
+          icon: FIELD_ICONS.name,
+          label: "Full Name",
+          value: `${profile.name} ${profile.surname}`,
+        },
+        { icon: FIELD_ICONS.username, label: "Username", value: profile.username },
+        { icon: FIELD_ICONS.email, label: "Email", value: profile.email ?? "—" },
+        { icon: FIELD_ICONS.phone, label: "Phone", value: profile.phone ?? "—" },
+        { icon: FIELD_ICONS.address, label: "Address", value: profile.address },
+        { icon: FIELD_ICONS.blood, label: "Blood Type", value: profile.bloodType },
+        {
+          icon: FIELD_ICONS.gender,
+          label: "Gender",
+          value: profile.sex.toLowerCase(),
+        },
+        {
+          icon: FIELD_ICONS.birthday,
+          label: "Birthday",
+          value: dateFormat.format(profile.birthday),
+        },
+        ...(isStudent
+          ? [
+              { icon: FIELD_ICONS.class, label: "Class", value: profile.className },
+              {
+                icon: FIELD_ICONS.grade,
+                label: "Grade",
+                value: `Grade ${profile.gradeLevel}`,
+              },
+              {
+                icon: FIELD_ICONS.parent,
+                label: "Parent",
+                value: `${profile.parentName} · ${profile.parentPhone}`,
+              },
+            ]
+          : []),
+      ];
+
       return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className={fieldClass}>
-            <span className={fieldLabel}>Full Name</span>
-            <span className={fieldValue}>
-              {profile.name} {profile.surname}
-            </span>
-          </div>
-          <div className={fieldClass}>
-            <span className={fieldLabel}>Username</span>
-            <span className={fieldValue}>{profile.username}</span>
-          </div>
-          <div className={fieldClass}>
-            <span className={fieldLabel}>Email</span>
-            <span className={fieldValue}>{profile.email ?? "—"}</span>
-          </div>
-          <div className={fieldClass}>
-            <span className={fieldLabel}>Phone</span>
-            <span className={fieldValue}>{profile.phone ?? "—"}</span>
-          </div>
-          <div className={fieldClass}>
-            <span className={fieldLabel}>Address</span>
-            <span className={fieldValue}>{profile.address}</span>
-          </div>
-          <div className={fieldClass}>
-            <span className={fieldLabel}>Blood Type</span>
-            <span className={fieldValue}>{profile.bloodType}</span>
-          </div>
-          <div className={fieldClass}>
-            <span className={fieldLabel}>Gender</span>
-            <span className={`${fieldValue} capitalize`}>
-              {profile.sex.toLowerCase()}
-            </span>
-          </div>
-          <div className={fieldClass}>
-            <span className={fieldLabel}>Birthday</span>
-            <span className={fieldValue}>
-              {dateFormat.format(profile.birthday)}
-            </span>
-          </div>
-          {isStudent && (
-            <>
-              <div className={fieldClass}>
-                <span className={fieldLabel}>Class</span>
-                <span className={fieldValue}>{profile.className}</span>
-              </div>
-              <div className={fieldClass}>
-                <span className={fieldLabel}>Grade</span>
-                <span className={fieldValue}>Grade {profile.gradeLevel}</span>
-              </div>
-              <div className={fieldClass}>
-                <span className={fieldLabel}>Parent</span>
-                <span className={fieldValue}>
-                  {profile.parentName} · {profile.parentPhone}
-                </span>
-              </div>
-            </>
-          )}
+        <div className={gridClass}>
+          {fields.map((f) => (
+            <Field key={f.label} icon={f.icon} label={f.label} value={f.value} />
+          ))}
         </div>
       );
     }
 
     // parent
-    return (
-      <div className="flex flex-col gap-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className={fieldClass}>
-            <span className={fieldLabel}>Full Name</span>
-            <span className={fieldValue}>
-              {profile.name} {profile.surname}
-            </span>
-          </div>
-          <div className={fieldClass}>
-            <span className={fieldLabel}>Username</span>
-            <span className={fieldValue}>{profile.username}</span>
-          </div>
-          <div className={fieldClass}>
-            <span className={fieldLabel}>Email</span>
-            <span className={fieldValue}>{profile.email ?? "—"}</span>
-          </div>
-          <div className={fieldClass}>
-            <span className={fieldLabel}>Phone</span>
-            <span className={fieldValue}>{profile.phone}</span>
-          </div>
-          <div className={fieldClass}>
-            <span className={fieldLabel}>Address</span>
-            <span className={fieldValue}>{profile.address}</span>
-          </div>
-        </div>
-        {profile.children.length > 0 && (
-          <div className={fieldClass}>
-            <span className={fieldLabel}>Children</span>
-            <span className={fieldValue}>
-              {profile.children
+    const fields = [
+      {
+        icon: FIELD_ICONS.name,
+        label: "Full Name",
+        value: `${profile.name} ${profile.surname}`,
+      },
+      { icon: FIELD_ICONS.username, label: "Username", value: profile.username },
+      { icon: FIELD_ICONS.email, label: "Email", value: profile.email ?? "—" },
+      { icon: FIELD_ICONS.phone, label: "Phone", value: profile.phone },
+      { icon: FIELD_ICONS.address, label: "Address", value: profile.address },
+      ...(profile.children.length > 0
+        ? [
+            {
+              icon: FIELD_ICONS.children,
+              label: "Children",
+              value: profile.children
                 .map((c) => `${c.name} ${c.surname} (${c.className})`)
-                .join(", ")}
-            </span>
-          </div>
-        )}
+                .join(", "),
+            },
+          ]
+        : []),
+    ];
+
+    return (
+      <div className={gridClass}>
+        {fields.map((f) => (
+          <Field key={f.label} icon={f.icon} label={f.label} value={f.value} />
+        ))}
       </div>
     );
   };
 
+  const avatar =
+    profile.role === "admin"
+      ? "/avatar.png"
+      : profile.role === "parent"
+        ? "/avatar.png"
+        : profile.img || "/avatar.png";
+
   const displayName =
     profile.role === "admin"
       ? profile.username
-      : profile.role === "parent"
-        ? `${profile.name} ${profile.surname}`
-        : `${profile.name} ${profile.surname}`;
+      : `${profile.name} ${profile.surname}`;
 
   return (
-    <div className="bg-white p-4 rounded-md flex-1 m-4 mt-0">
-      <div className="flex items-center gap-4">
-        <Image
-          src="/avatar.png"
-          alt="Profile"
-          width={64}
-          height={64}
-          className="rounded-full"
-        />
-        <div>
-          <h1 className="text-xl font-semibold">{displayName}</h1>
-          <p className="text-sm text-gray-500 capitalize">
-            {roleLabel(role as Role)}
-          </p>
-          <p className="text-xs text-gray-400 mt-1">ID: {userId}</p>
+    <div className="flex-1 m-4 mt-0 flex flex-col gap-5">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-kamal-purple via-kamal-sky to-kamal-yellow p-7">
+        <div className="absolute -top-12 -right-10 w-52 h-52 rounded-full bg-white/20" />
+        <div className="absolute top-6 right-28 w-16 h-16 rounded-full bg-white/20" />
+        <div className="absolute -bottom-16 -left-8 w-40 h-40 rounded-full bg-white/10" />
+        <div className="relative flex flex-col sm:flex-row sm:items-center gap-5">
+          <ProfileAvatarUpload
+            avatar={avatar}
+            editable={role === "teacher" || role === "student"}
+          />
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold text-gray-800">{displayName}</h1>
+            <p className="mt-2 inline-flex items-center text-sm font-medium bg-white/70 text-gray-700 px-3 py-1 rounded-full capitalize">
+              {roleLabel(role as Role)}
+            </p>
+            <p className="mt-2 text-xs font-medium text-gray-600">
+              Member ID · {userId}
+            </p>
+          </div>
+          <div className="hidden sm:block shrink-0 text-right">
+            <p className="text-xs font-medium uppercase tracking-wider text-gray-700/60">
+              Role
+            </p>
+            <p className="mt-1 text-lg font-bold text-gray-700 capitalize">
+              {roleLabel(role as Role)}
+            </p>
+          </div>
         </div>
       </div>
-      <div className="mt-6">{renderFields()}</div>
+
+      <div className="flex items-center gap-3">
+        <h2 className="text-lg font-semibold text-gray-800">
+          Personal Information
+        </h2>
+        <div className="h-px flex-1 bg-gray-200 rounded-full" />
+      </div>
+
+      {renderFields()}
     </div>
   );
 };

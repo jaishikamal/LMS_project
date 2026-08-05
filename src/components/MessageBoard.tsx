@@ -26,6 +26,7 @@ export type InboxMessage = {
   id: number;
   senderId: string;
   senderRole: string;
+  senderName: string;
   subject: string;
   body: string;
   sentAt: Date;
@@ -36,6 +37,7 @@ export type OutboxMessage = {
   id: number;
   recipientId: string;
   recipientRole: string;
+  recipientName: string;
   subject: string;
   sentAt: Date;
   readAt: Date | null;
@@ -364,6 +366,9 @@ const MessageBoard = ({
                   <div className="flex flex-col min-w-0 flex-1 gap-0.5">
                     <div className="flex items-center gap-2">
                       <RoleBadge role={message.senderRole} />
+                      <span className="text-sm font-medium text-gray-800 truncate">
+                        {message.senderName}
+                      </span>
                       {!message.readAt && (
                         <span className="text-xs font-semibold text-blue-600">
                           New
@@ -389,7 +394,7 @@ const MessageBoard = ({
                     </div>
                     <div className="mt-4 flex flex-col gap-2">
                       <label className="text-xs font-medium text-gray-500">
-                        Reply to {ROLE_LABELS[message.senderRole]}
+                        Reply to {message.senderName}
                       </label>
                       <div className="flex flex-col sm:flex-row gap-2 items-stretch">
                         <textarea
@@ -442,6 +447,9 @@ const MessageBoard = ({
                 <div className="flex flex-col min-w-0 flex-1 gap-0.5">
                   <div className="flex items-center gap-2">
                     <RoleBadge role={message.recipientRole} />
+                    <span className="text-sm font-medium text-gray-800 truncate">
+                      {message.recipientName}
+                    </span>
                   </div>
                   <span className="font-medium text-gray-800 truncate">
                     {message.subject}
