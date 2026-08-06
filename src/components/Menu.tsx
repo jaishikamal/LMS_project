@@ -54,12 +54,6 @@ const menuSections: MenuSectionConfig[] = [
     title: "USER MANAGEMENT",
     items: [
       {
-        icon: UsersIcon,
-        label: "Users",
-        href: "/list/students",
-        permission: "students.view",
-      },
-      {
         icon: ShieldIcon,
         label: "Roles & Permissions",
         href: "/list/permissions",
