@@ -101,6 +101,7 @@ const MessagePage = async () => {
       accountLookup.get(`${item.recipientRole}:${item.recipientId}`) ??
       item.recipientId,
     subject: item.subject,
+    body: item.body,
     sentAt: item.sentAt,
     readAt: item.readAt,
   }));
@@ -108,13 +109,7 @@ const MessagePage = async () => {
   const myName = accountLookup.get(`${role}:${userId}`) ?? "You";
 
   return (
-    <div className="bg-white p-4 rounded-md flex-1 m-4 mt-0">
-      <div className="flex items-center gap-2 mb-4">
-        <h1 className="text-lg font-semibold">Messages</h1>
-        <span className="text-xs font-medium text-gray-400">
-          Inbox · Sent · Compose
-        </span>
-      </div>
+    <div className="p-4 flex-1 m-4 mt-0 min-h-0">
       <MessageBoard
         myId={userId}
         myRole={role}
