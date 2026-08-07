@@ -179,12 +179,9 @@ const menuSections: MenuSectionConfig[] = [
     items: [
       {
         icon: LeaveIcon,
-        label: "Leaves",
+        label: "Attendance",
         href: "/list/attendance",
         permission: "attendance.view",
-        subItems: [
-          { label: "Attendance & Leaves", href: "/list/attendance", permission: "attendance.view" },
-        ],
       },
       {
         icon: StaffIcon,

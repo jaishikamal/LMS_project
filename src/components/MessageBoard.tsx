@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "react-toastify";
 import { io, type Socket } from "socket.io-client";
@@ -49,6 +49,23 @@ export type SocketMessage = {
   subject: string;
   body: string;
   sentAt: string;
+};
+
+type ConvMessage = {
+  id: number;
+  fromMe: boolean;
+  subject: string;
+  body: string;
+  sentAt: Date;
+  readAt: Date | null;
+};
+
+type Conversation = {
+  key: string;
+  counterpartId: string;
+  counterpartRole: string;
+  counterpartName: string;
+  messages: ConvMessage[];
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -241,15 +258,14 @@ const MessageBoard = ({
   initialOutbox: OutboxMessage[];
   recipients: MessageRecipient[];
 }) => {
-  const [tab, setTab] = useState<"inbox" | "sent">("inbox");
-  const [selectedMsgId, setSelectedMsgId] = useState<number | null>(null);
+  const [selectedConvKey, setSelectedConvKey] = useState<string | null>(null);
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState<string>("all");
   const [isPending, startTransition] = useTransition();
   const [live, setLive] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const selectedConvKeyRef = useRef<string | null>(null);
 
   const [replyText, setReplyText] = useState("");
   const [replying, setReplying] = useState(false);
@@ -275,14 +291,84 @@ const MessageBoard = ({
   const watchedRole = watch("recipientRole") ?? "teacher";
   const roleRecipients = recipients.filter((r) => r.role === watchedRole);
 
-  // Auto-scroll chat view to bottom when message is selected or reply sent
+  // Group all messages (incoming + outgoing) into conversations by the other
+  // party so each thread shows both sides like a messenger app.
+  const conversations = useMemo<Conversation[]>(() => {
+    const map = new Map<string, Conversation>();
+
+    for (const m of inbox) {
+      const key = `${m.senderRole}:${m.senderId}`;
+      const conv = map.get(key) ?? {
+        key,
+        counterpartId: m.senderId,
+        counterpartRole: m.senderRole,
+        counterpartName: m.senderName,
+        messages: [],
+      };
+      conv.messages.push({
+        id: m.id,
+        fromMe: false,
+        subject: m.subject,
+        body: m.body,
+        sentAt: m.sentAt,
+        readAt: m.readAt,
+      });
+      map.set(key, conv);
+    }
+
+    for (const m of outbox) {
+      const key = `${m.recipientRole}:${m.recipientId}`;
+      const conv = map.get(key) ?? {
+        key,
+        counterpartId: m.recipientId,
+        counterpartRole: m.recipientRole,
+        counterpartName: m.recipientName,
+        messages: [],
+      };
+      conv.messages.push({
+        id: m.id,
+        fromMe: true,
+        subject: m.subject,
+        body: m.body,
+        sentAt: m.sentAt,
+        readAt: m.readAt,
+      });
+      map.set(key, conv);
+    }
+
+    const list = Array.from(map.values());
+    for (const c of list) {
+      c.messages.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
+    }
+    list.sort((a, b) => {
+      const la = a.messages[a.messages.length - 1].sentAt.getTime();
+      const lb = b.messages[b.messages.length - 1].sentAt.getTime();
+      return lb - la;
+    });
+    return list;
+  }, [inbox, outbox]);
+
+  const selectedConv =
+    conversations.find((c) => c.key === selectedConvKey) ?? null;
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   useEffect(() => {
     scrollToBottom();
-  }, [selectedMsgId, inbox, outbox]);
+  }, [selectedConvKey, selectedConv?.messages.length, live]);
+
+  useEffect(() => {
+    selectedConvKeyRef.current = selectedConvKey;
+  }, [selectedConvKey]);
+
+  // Auto-select the most recent conversation on load.
+  useEffect(() => {
+    if (selectedConvKey === null && conversations.length > 0) {
+      setSelectedConvKey(conversations[0].key);
+    }
+  }, [conversations, selectedConvKey]);
 
   // Connect real-time socket
   useEffect(() => {
@@ -321,6 +407,24 @@ const MessageBoard = ({
                   ...prev,
                 ]
           );
+          // If we are currently viewing this conversation, mark it read.
+          const viewing =
+            selectedConvKeyRef.current === `${data.senderRole}:${data.senderId}`;
+          if (viewing) {
+            setInbox((prev) =>
+              prev.map((m) =>
+                m.id === data.id ? { ...m, readAt: new Date() } : m
+              )
+            );
+            startTransition(async () => {
+              await markMessageRead(data.id);
+              socketRef.current?.emit("message:read", {
+                id: data.id,
+                senderId: data.senderId,
+                senderRole: data.senderRole,
+              });
+            });
+          }
         });
         socket.on("message:read", (data: { id?: unknown }) => {
           if (typeof data?.id !== "number") return;
@@ -344,67 +448,46 @@ const MessageBoard = ({
     };
   }, []);
 
-  // Select first message if none selected on desktop
-  useEffect(() => {
-    if (selectedMsgId === null && inbox.length > 0 && tab === "inbox") {
-      setSelectedMsgId(inbox[0].id);
-    } else if (selectedMsgId === null && outbox.length > 0 && tab === "sent") {
-      setSelectedMsgId(outbox[0].id);
-    }
-  }, [inbox, outbox, tab, selectedMsgId]);
-
-  const handleSelectMessage = (id: number) => {
-    setSelectedMsgId(id);
-    if (tab === "inbox") {
-      const msg = inbox.find((m) => m.id === id);
-      if (msg && !msg.readAt) {
-        setInbox((prev) =>
-          prev.map((m) => (m.id === id ? { ...m, readAt: new Date() } : m))
-        );
-        startTransition(async () => {
-          await markMessageRead(id);
-          socketRef.current?.emit("message:read", {
-            id,
-            senderId: msg.senderId,
-            senderRole: msg.senderRole,
-          });
+  const handleSelectConversation = (conv: Conversation) => {
+    setSelectedConvKey(conv.key);
+    const unread = conv.messages.filter((m) => !m.fromMe && !m.readAt);
+    if (unread.length === 0) return;
+    const ids = new Set(unread.map((m) => m.id));
+    setInbox((prev) =>
+      prev.map((m) => (ids.has(m.id) ? { ...m, readAt: new Date() } : m))
+    );
+    startTransition(async () => {
+      for (const m of unread) {
+        await markMessageRead(m.id);
+        socketRef.current?.emit("message:read", {
+          id: m.id,
+          senderId: conv.counterpartId,
+          senderRole: conv.counterpartRole,
         });
       }
-    }
+    });
   };
-
-  const selectedInboxMsg = inbox.find((m) => m.id === selectedMsgId);
-  const selectedOutboxMsg = outbox.find((m) => m.id === selectedMsgId);
 
   const handleReplySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!replyText.trim()) return;
+    if (!selectedConv || !replyText.trim()) return;
 
-    let toId: string;
-    let toRole: "admin" | "teacher" | "student" | "parent";
-    let toName: string;
-    let subject: string;
-
-    if (tab === "inbox") {
-      if (!selectedInboxMsg) return;
-      toId = selectedInboxMsg.senderId;
-      toRole = selectedInboxMsg.senderRole as "admin" | "teacher" | "student" | "parent";
-      toName = selectedInboxMsg.senderName;
-      subject = selectedInboxMsg.subject.startsWith("Re:")
-        ? selectedInboxMsg.subject
-        : `Re: ${selectedInboxMsg.subject}`;
-    } else {
-      if (!selectedOutboxMsg) return;
-      toId = selectedOutboxMsg.recipientId;
-      toRole = selectedOutboxMsg.recipientRole as "admin" | "teacher" | "student" | "parent";
-      toName = selectedOutboxMsg.recipientName;
-      subject = selectedOutboxMsg.subject.startsWith("Re:")
-        ? selectedOutboxMsg.subject
-        : `Re: ${selectedOutboxMsg.subject}`;
-    }
-
+    const lastMsg = selectedConv.messages[selectedConv.messages.length - 1];
+    const baseSubject = lastMsg?.subject || "Message";
+    const subject = baseSubject.startsWith("Re:")
+      ? baseSubject
+      : `Re: ${baseSubject}`;
     const body = replyText.trim();
-    const values = { recipientId: toId, recipientRole: toRole, subject, body };
+    const values = {
+      recipientId: selectedConv.counterpartId,
+      recipientRole: selectedConv.counterpartRole as
+        | "admin"
+        | "teacher"
+        | "student"
+        | "parent",
+      subject,
+      body,
+    };
 
     setReplying(true);
     const result = await sendMessage({ success: false, error: null }, values);
@@ -423,7 +506,7 @@ const MessageBoard = ({
         id: created.id,
         recipientId: created.recipientId,
         recipientRole: created.recipientRole,
-        recipientName: toName,
+        recipientName: selectedConv.counterpartName,
         subject: created.subject,
         body: created.body,
         sentAt: created.sentAt,
@@ -475,54 +558,117 @@ const MessageBoard = ({
           senderId: myId,
           senderRole: myRole,
           senderName: myName,
-          body: created.body,
           sentAt: created.sentAt.toISOString(),
         });
         toast.success("Message sent!");
         reset();
         setIsComposeOpen(false);
-        setTab("sent");
-        setSelectedMsgId(created.id);
+        setSelectedConvKey(`${created.recipientRole}:${created.recipientId}`);
       } else if (result.error) {
         toast.error(result.error);
       }
     });
   });
 
-  // Filter messages
-  const filteredInbox = inbox.filter((m) => {
-    const matchesSearch =
-      m.senderName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.body.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRole =
-      roleFilter === "all"
-        ? true
-        : roleFilter === "unread"
-        ? !m.readAt
-        : m.senderRole === roleFilter;
-    return matchesSearch && matchesRole;
+  const filteredConversations = conversations.filter((c) => {
+    const q = searchQuery.toLowerCase();
+    if (!q) return true;
+    const last = c.messages[c.messages.length - 1];
+    return (
+      c.counterpartName.toLowerCase().includes(q) ||
+      (last?.body.toLowerCase().includes(q) ?? false) ||
+      (last?.subject.toLowerCase().includes(q) ?? false)
+    );
   });
 
-  const filteredOutbox = outbox.filter((m) => {
-    const matchesSearch =
-      m.recipientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.subject.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRole =
-      roleFilter === "all" ? true : m.recipientRole === roleFilter;
-    return matchesSearch && matchesRole;
-  });
+  const totalUnread = conversations.reduce(
+    (sum, c) =>
+      sum + c.messages.filter((m) => !m.fromMe && !m.readAt).length,
+    0
+  );
 
-  const unreadCount = inbox.filter((m) => !m.readAt).length;
+  const formatDivider = (value: Date) => {
+    const date = new Date(value);
+    const now = new Date();
+    if (date.toDateString() === now.toDateString()) return "Today";
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+    return `${date.getDate()} ${months[date.getMonth()]}, ${date.getFullYear()}`;
+  };
+
+  const renderMessages = () => {
+    if (!selectedConv) return null;
+    let lastDate: string | null = null;
+    return selectedConv.messages.map((msg) => {
+      const dateStr = new Date(msg.sentAt).toDateString();
+      const showDivider = dateStr !== lastDate;
+      lastDate = dateStr;
+      return (
+        <div key={msg.id} className="space-y-1">
+          {showDivider && (
+            <div className="flex justify-center my-3">
+              <span className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-semibold text-slate-500 dark:text-slate-400 px-3 py-1 rounded-full">
+                {formatDivider(msg.sentAt)}
+              </span>
+            </div>
+          )}
+          {msg.fromMe ? (
+            <div className="flex items-end justify-end gap-2">
+              <div className="flex flex-col items-end gap-1 max-w-[80%]">
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm leading-relaxed shadow-md shadow-blue-500/10 whitespace-pre-wrap">
+                  {msg.body}
+                </div>
+                <span className="flex items-center gap-1 text-[10px] text-slate-400">
+                  <span>You</span>
+                  <span>{formatTime(msg.sentAt)}</span>
+                  {msg.readAt ? Icons.checkDouble : Icons.checkSingle}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-end gap-2">
+              <MessengerAvatar
+                name={selectedConv.counterpartName}
+                role={selectedConv.counterpartRole}
+                size="sm"
+              />
+              <div className="flex flex-col gap-1 max-w-[80%]">
+                <div className="bg-slate-200/90 dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm leading-relaxed shadow-sm whitespace-pre-wrap">
+                  {msg.body}
+                </div>
+                <span className="text-[10px] text-slate-400">
+                  {formatTime(msg.sentAt)}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    });
+  };
 
   return (
     <div className="flex flex-col h-[calc(100vh-140px)] min-h-[600px] bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xl overflow-hidden font-sans">
-      {/* Messenger Container Layout */}
       <div className="flex flex-1 min-h-0 relative">
         {/* Left Sidebar: Conversation List */}
         <div
           className={`w-full md:w-80 lg:w-96 border-r border-slate-200/80 dark:border-slate-800 flex flex-col bg-slate-50/50 dark:bg-slate-950/40 ${
-            selectedMsgId !== null ? "hidden md:flex" : "flex"
+            selectedConvKey !== null ? "hidden md:flex" : "flex"
           }`}
         >
           {/* Header */}
@@ -531,6 +677,11 @@ const MessageBoard = ({
               <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
                 Chats
               </h1>
+              {totalUnread > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-blue-600 text-white text-[11px] font-bold">
+                  {totalUnread}
+                </span>
+              )}
               <span
                 className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full border ${
                   live
@@ -559,7 +710,7 @@ const MessageBoard = ({
               </span>
               <input
                 type="text"
-                placeholder="Search messages, names..."
+                placeholder="Search Messenger"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-8 py-2 bg-slate-200/60 dark:bg-slate-800/70 border-none rounded-full text-xs font-medium text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
@@ -575,137 +726,25 @@ const MessageBoard = ({
             </div>
           </div>
 
-          {/* View Tabs & Role Chips */}
-          <div className="p-2.5 border-b border-slate-200/60 dark:border-slate-800/80 flex flex-col gap-2">
-            <div className="grid grid-cols-2 p-1 bg-slate-200/60 dark:bg-slate-800/70 rounded-xl text-xs font-semibold">
-              <button
-                onClick={() => {
-                  setTab("inbox");
-                  setSelectedMsgId(inbox[0]?.id ?? null);
-                }}
-                className={`py-1.5 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                  tab === "inbox"
-                    ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"
-                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
-                }`}
-              >
-                <span>Inbox</span>
-                {unreadCount > 0 && (
-                  <span className="px-1.5 py-0.2 bg-blue-600 text-white rounded-full text-[10px] font-bold">
-                    {unreadCount}
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={() => {
-                  setTab("sent");
-                  setSelectedMsgId(outbox[0]?.id ?? null);
-                }}
-                className={`py-1.5 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                  tab === "sent"
-                    ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"
-                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
-                }`}
-              >
-                <span>Sent</span>
-              </button>
-            </div>
-
-            {/* Role Filter Chips */}
-            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5 text-[11px] font-semibold">
-              {[
-                { id: "all", label: "All" },
-                ...(tab === "inbox" ? [{ id: "unread", label: "Unread" }] : []),
-                { id: "admin", label: "Admins" },
-                { id: "teacher", label: "Teachers" },
-                { id: "student", label: "Students" },
-                { id: "parent", label: "Parents" },
-              ].map((chip) => (
-                <button
-                  key={chip.id}
-                  onClick={() => setRoleFilter(chip.id)}
-                  className={`px-2.5 py-1 rounded-full whitespace-nowrap transition-all ${
-                    roleFilter === chip.id
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "bg-slate-200/50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800"
-                  }`}
-                >
-                  {chip.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Conversation List Stream */}
+          {/* Conversation List */}
           <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/50">
-            {tab === "inbox" ? (
-              filteredInbox.length === 0 ? (
-                <div className="p-8 text-center text-slate-400 text-xs">
-                  No inbox messages found
-                </div>
-              ) : (
-                filteredInbox.map((msg) => {
-                  const isSelected = selectedMsgId === msg.id;
-                  const isUnread = !msg.readAt;
-                  return (
-                    <button
-                      key={msg.id}
-                      onClick={() => handleSelectMessage(msg.id)}
-                      className={`w-full text-left p-3.5 flex items-center gap-3 transition-all ${
-                        isSelected
-                          ? "bg-blue-50/90 dark:bg-blue-950/40 border-l-4 border-blue-600"
-                          : "hover:bg-slate-100/70 dark:hover:bg-slate-800/40"
-                      }`}
-                    >
-                      <MessengerAvatar
-                        name={msg.senderName}
-                        role={msg.senderRole}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-1 mb-0.5">
-                          <span
-                            className={`text-xs truncate ${
-                              isUnread
-                                ? "font-bold text-slate-900 dark:text-white"
-                                : "font-semibold text-slate-700 dark:text-slate-300"
-                            }`}
-                          >
-                            {msg.senderName}
-                          </span>
-                          <span className="text-[10px] text-slate-400 shrink-0">
-                            {formatTime(msg.sentAt)}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-1">
-                          <p
-                            className={`text-xs truncate ${
-                              isUnread
-                                ? "font-bold text-slate-900 dark:text-slate-100"
-                                : "text-slate-500 dark:text-slate-400"
-                            }`}
-                          >
-                            {msg.subject}
-                          </p>
-                          {isUnread && (
-                            <span className="w-2.5 h-2.5 rounded-full bg-blue-600 shrink-0 shadow-sm" />
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })
-              )
-            ) : filteredOutbox.length === 0 ? (
+            {filteredConversations.length === 0 ? (
               <div className="p-8 text-center text-slate-400 text-xs">
-                No sent messages found
+                {conversations.length === 0
+                  ? "No conversations yet. Start by sending a message."
+                  : "No conversations match your search."}
               </div>
             ) : (
-              filteredOutbox.map((msg) => {
-                const isSelected = selectedMsgId === msg.id;
+              filteredConversations.map((conv) => {
+                const last = conv.messages[conv.messages.length - 1];
+                const unread = conv.messages.filter(
+                  (m) => !m.fromMe && !m.readAt
+                ).length;
+                const isSelected = selectedConvKey === conv.key;
                 return (
                   <button
-                    key={msg.id}
-                    onClick={() => setSelectedMsgId(msg.id)}
+                    key={conv.key}
+                    onClick={() => handleSelectConversation(conv)}
                     className={`w-full text-left p-3.5 flex items-center gap-3 transition-all ${
                       isSelected
                         ? "bg-blue-50/90 dark:bg-blue-950/40 border-l-4 border-blue-600"
@@ -713,25 +752,46 @@ const MessageBoard = ({
                     }`}
                   >
                     <MessengerAvatar
-                      name={msg.recipientName}
-                      role={msg.recipientRole}
+                      name={conv.counterpartName}
+                      role={conv.counterpartRole}
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1 mb-0.5">
-                        <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
-                          To: {msg.recipientName}
+                        <span
+                          className={`text-sm truncate ${
+                            unread > 0
+                              ? "font-bold text-slate-900 dark:text-white"
+                              : "font-semibold text-slate-700 dark:text-slate-300"
+                          }`}
+                        >
+                          {conv.counterpartName}
                         </span>
-                        <span className="text-[10px] text-slate-400 shrink-0">
-                          {formatTime(msg.sentAt)}
-                        </span>
+                        {last && (
+                          <span className="text-[10px] text-slate-400 shrink-0">
+                            {formatTime(last.sentAt)}
+                          </span>
+                        )}
                       </div>
-                      <div className="flex items-center justify-between gap-1">
-                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                          {msg.subject}
+                      <div className="flex items-center justify-between gap-2">
+                        <p
+                          className={`text-xs truncate ${
+                            unread > 0
+                              ? "font-bold text-slate-900 dark:text-slate-100"
+                              : "text-slate-500 dark:text-slate-400"
+                          }`}
+                        >
+                          {last?.fromMe && (
+                            <span className="text-blue-600 dark:text-blue-400 font-medium">
+                              You:{" "}
+                            </span>
+                          )}
+                          {last?.body || last?.subject || "\u00A0"}
                         </p>
-                        <span>
-                          {msg.readAt ? Icons.checkDouble : Icons.checkSingle}
-                        </span>
+                        {unread > 0 && (
+                          <span className="px-1.5 py-0.5 bg-blue-600 text-white rounded-full text-[10px] font-bold shrink-0 shadow-sm">
+                            {unread}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </button>
@@ -741,61 +801,41 @@ const MessageBoard = ({
           </div>
         </div>
 
-        {/* Right Main Pane: Messenger Active Chat Thread */}
+        {/* Right Main Pane: Active Conversation Thread */}
         <div
           className={`flex-1 flex flex-col bg-white dark:bg-slate-900 ${
-            selectedMsgId === null ? "hidden md:flex" : "flex"
+            selectedConvKey === null ? "hidden md:flex" : "flex"
           }`}
         >
-          {selectedInboxMsg || selectedOutboxMsg ? (
+          {selectedConv ? (
             <>
               {/* Chat Thread Header */}
               <div className="px-5 py-3.5 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between bg-white/80 dark:bg-slate-900/80 backdrop-blur-md sticky top-0 z-10">
                 <div className="flex items-center gap-3">
                   <button
-                    onClick={() => setSelectedMsgId(null)}
+                    onClick={() => setSelectedConvKey(null)}
                     className="md:hidden p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300"
                   >
                     {Icons.back}
                   </button>
 
                   <MessengerAvatar
-                    name={
-                      tab === "inbox"
-                        ? selectedInboxMsg!.senderName
-                        : selectedOutboxMsg!.recipientName
-                    }
-                    role={
-                      tab === "inbox"
-                        ? selectedInboxMsg!.senderRole
-                        : selectedOutboxMsg!.recipientRole
-                    }
+                    name={selectedConv.counterpartName}
+                    role={selectedConv.counterpartRole}
                     size="md"
                   />
 
                   <div>
                     <div className="flex items-center gap-2">
                       <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                        {tab === "inbox"
-                          ? selectedInboxMsg!.senderName
-                          : selectedOutboxMsg!.recipientName}
+                        {selectedConv.counterpartName}
                       </h2>
                       <span
                         className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                          ROLE_STYLES[
-                            tab === "inbox"
-                              ? selectedInboxMsg!.senderRole
-                              : selectedOutboxMsg!.recipientRole
-                          ]?.badge
+                          ROLE_STYLES[selectedConv.counterpartRole]?.badge
                         }`}
                       >
-                        {
-                          ROLE_LABELS[
-                            tab === "inbox"
-                              ? selectedInboxMsg!.senderRole
-                              : selectedOutboxMsg!.recipientRole
-                          ]
-                        }
+                        {ROLE_LABELS[selectedConv.counterpartRole]}
                       </span>
                     </div>
                     <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
@@ -805,145 +845,92 @@ const MessageBoard = ({
                   </div>
                 </div>
 
-                {/* Messenger Header Action Buttons */}
                 <div className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
                   <button
                     onClick={() =>
                       toast.info(
-                        `Subject: ${
-                          selectedInboxMsg?.subject || selectedOutboxMsg?.subject
+                        `Topic: ${
+                          selectedConv.messages[
+                            selectedConv.messages.length - 1
+                          ]?.subject ?? "Untitled"
                         }`
                       )
                     }
                     className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                    title="Message Details"
+                    title="Conversation Details"
                   >
                     {Icons.info}
                   </button>
                 </div>
               </div>
 
-              {/* Chat Conversation Thread */}
-              <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-slate-50/40 dark:bg-slate-950/20">
-                {/* Subject Header Banner */}
-                <div className="flex justify-center my-2">
-                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm rounded-full px-4 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Topic:{" "}
-                    {selectedInboxMsg?.subject || selectedOutboxMsg?.subject}
-                  </div>
+              {/* Chat Thread */}
+              <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50/40 dark:bg-slate-950/20">
+                <div className="space-y-3">
+                  {renderMessages()}
+                  <div ref={messagesEndRef} />
                 </div>
-
-                {/* Main Message Content */}
-                {tab === "inbox" && selectedInboxMsg && (
-                  <div className="flex items-start gap-3 max-w-[85%]">
-                    <MessengerAvatar
-                      name={selectedInboxMsg.senderName}
-                      role={selectedInboxMsg.senderRole}
-                      size="sm"
-                    />
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 ml-1">
-                        {selectedInboxMsg.senderName}
-                      </span>
-                      <div className="bg-slate-200/80 dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed shadow-sm whitespace-pre-wrap">
-                        {selectedInboxMsg.body}
-                      </div>
-                      <span className="text-[10px] text-slate-400 ml-1">
-                        {formatTime(selectedInboxMsg.sentAt)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {tab === "sent" && selectedOutboxMsg && (
-                  <div className="flex items-end justify-end gap-2 max-w-[85%] ml-auto">
-                    <div className="flex flex-col items-end gap-1">
-                      <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mr-1">
-                        You → {selectedOutboxMsg.recipientName}
-                      </span>
-                      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl rounded-tr-sm px-4 py-3 text-sm leading-relaxed shadow-md shadow-blue-500/10 whitespace-pre-wrap">
-                        {selectedOutboxMsg.body}
-                      </div>
-                      <div className="flex items-center gap-1 text-[10px] text-slate-400">
-                        <span>{formatTime(selectedOutboxMsg.sentAt)}</span>
-                        <span>
-                          {selectedOutboxMsg.readAt
-                            ? Icons.checkDouble
-                            : Icons.checkSingle}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div ref={messagesEndRef} />
               </div>
 
-              {/* Messenger Bottom Reply Bar — shown for both inbox and sent */}
-              {(tab === "inbox" ? !!selectedInboxMsg : !!selectedOutboxMsg) && (
-                <form
-                  onSubmit={handleReplySubmit}
-                  className="p-3.5 border-t border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center gap-2"
+              {/* Reply Bar */}
+              <form
+                onSubmit={handleReplySubmit}
+                className="p-3.5 border-t border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center gap-2"
+              >
+                <button
+                  type="button"
+                  onClick={() => toast.info("Attachment added")}
+                  className="p-2 text-blue-600 dark:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition"
+                  title="Attach file"
                 >
+                  {Icons.paperclip}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => toast.info("Photos feature preview")}
+                  className="p-2 text-blue-600 dark:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition"
+                  title="Send image"
+                >
+                  {Icons.image}
+                </button>
+
+                <div className="flex-1 relative flex items-center">
+                  <input
+                    type="text"
+                    placeholder={`Message ${selectedConv.counterpartName}...`}
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-full pl-4 pr-10 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                  />
                   <button
                     type="button"
-                    onClick={() => toast.info("Attachment added")}
-                    className="p-2 text-blue-600 dark:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition"
-                    title="Attach file"
+                    onClick={() => setReplyText((prev) => prev + " 😊")}
+                    className="absolute right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                   >
-                    {Icons.paperclip}
+                    {Icons.smile}
                   </button>
+                </div>
 
+                {replyText.trim() ? (
+                  <button
+                    type="submit"
+                    disabled={replying}
+                    className="w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white flex items-center justify-center shadow-md shadow-blue-500/20 transition-all disabled:opacity-50"
+                  >
+                    {Icons.send}
+                  </button>
+                ) : (
                   <button
                     type="button"
-                    onClick={() => toast.info("Photos feature preview")}
-                    className="p-2 text-blue-600 dark:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition"
-                    title="Send image"
+                    onClick={() => setReplyText("👍")}
+                    className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition"
+                    title="Send thumbs up"
                   >
-                    {Icons.image}
+                    {Icons.thumbsUp}
                   </button>
-
-                  <div className="flex-1 relative flex items-center">
-                    <input
-                      type="text"
-                      placeholder={
-                        tab === "inbox"
-                          ? `Reply to ${selectedInboxMsg!.senderName}...`
-                          : `Send another message to ${selectedOutboxMsg!.recipientName}...`
-                      }
-                      value={replyText}
-                      onChange={(e) => setReplyText(e.target.value)}
-                      className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-full pl-4 pr-10 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setReplyText((prev) => prev + " 😊")}
-                      className="absolute right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                    >
-                      {Icons.smile}
-                    </button>
-                  </div>
-
-                  {replyText.trim() ? (
-                    <button
-                      type="submit"
-                      disabled={replying}
-                      className="w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white flex items-center justify-center shadow-md shadow-blue-500/20 transition-all disabled:opacity-50"
-                    >
-                      {Icons.send}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setReplyText("👍")}
-                      className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition"
-                      title="Send thumbs up"
-                    >
-                      {Icons.thumbsUp}
-                    </button>
-                  )}
-                </form>
-              )}
+                )}
+              </form>
             </>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50/50 dark:bg-slate-950/20">
@@ -970,11 +957,10 @@ const MessageBoard = ({
         </div>
       </div>
 
-      {/* Messenger Compose Modal / Slide-Over */}
+      {/* Compose Modal */}
       {isComposeOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in zoom-in duration-200">
-            {/* Modal Header */}
             <div className="px-6 py-4 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-950/50">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center">
@@ -992,9 +978,7 @@ const MessageBoard = ({
               </button>
             </div>
 
-            {/* Form */}
             <form onSubmit={onComposeSubmit} className="p-6 space-y-4">
-              {/* Recipient Role Selection */}
               <div>
                 <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
                   To (Role):
@@ -1017,7 +1001,6 @@ const MessageBoard = ({
                 </div>
               </div>
 
-              {/* Recipient Selector */}
               <div>
                 <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
                   Select Recipient:
@@ -1040,7 +1023,6 @@ const MessageBoard = ({
                 )}
               </div>
 
-              {/* Subject Input */}
               <div>
                 <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
                   Subject:
@@ -1058,7 +1040,6 @@ const MessageBoard = ({
                 )}
               </div>
 
-              {/* Message Body */}
               <div>
                 <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
                   Message:
@@ -1082,7 +1063,6 @@ const MessageBoard = ({
                 </div>
               )}
 
-              {/* Modal Footer */}
               <div className="pt-2 flex items-center justify-end gap-2">
                 <button
                   type="button"
